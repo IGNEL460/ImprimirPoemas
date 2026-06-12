@@ -14,6 +14,20 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Cargar imagen de logo en Base64 para imprimir en terminales
+let logoBase64 = '';
+const logoPath = path.join(__dirname, 'logo.jpg');
+try {
+  if (fs.existsSync(logoPath)) {
+    logoBase64 = fs.readFileSync(logoPath, 'base64');
+    console.log('[Impresora] Imagen de logo cargada y convertida a Base64.');
+  } else {
+    console.warn('[Impresora] Advertencia: No se encontró la imagen de logo en:', logoPath);
+  }
+} catch (err) {
+  console.error('[Impresora] Error al cargar la imagen de logo:', err);
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -35,7 +49,8 @@ function formatPoemForPoint(poem) {
   content += formattedLines.join('{br}');
   content += `{br}{br}{center}* * * * *{/center}{br}`;
   content += `{center}{s}Gracias por tu colaboración{/s}{/center}{br}`;
-  content += `{center}{s}y por apoyar el arte.{/s}{/center}{br}{br}{br}`;
+  content += `{center}{s}y por apoyar el arte.{/s}{/center}{br}`;
+  content += `{center}{b}elpecado.ar{/b}{/center}{br}{br}{br}`;
 
   // La API requiere entre 100 y 4096 caracteres.
   // Si es muy corto, le agregamos saltos de línea al final para cumplir con el mínimo.
@@ -46,7 +61,7 @@ function formatPoemForPoint(poem) {
   return content;
 }
 
-// Enviar acción de impresión a la terminal de Mercado Pago
+// Enviar acción de impresión a la terminal de Mercado Pago (Texto personalizado)
 async function printOnTerminal(text) {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   const terminalId = process.env.MP_TERMINAL_ID;
@@ -74,6 +89,54 @@ async function printOnTerminal(text) {
   };
 
   console.log(`[Impresora] Enviando orden de impresión a la terminal: ${terminalId}...`);
+
+  const response = await axios.post(
+    'https://api.mercadopago.com/terminals/v1/actions',
+    payload,
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'X-Idempotency-Key': idempotencyKey
+      }
+    }
+  );
+
+  return response.data;
+}
+
+// Enviar logotipo del Pecado a la terminal (Imagen Base64)
+async function printImageOnTerminal() {
+  if (!logoBase64) {
+    console.warn('[Impresora] No hay imagen de logo disponible en Base64 para imprimir.');
+    return null;
+  }
+
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  const terminalId = process.env.MP_TERMINAL_ID;
+
+  if (!accessToken || accessToken.includes('tu_access_token')) {
+    throw new Error('Mercado Pago Access Token no configurado en el archivo .env');
+  }
+  if (!terminalId || terminalId.includes('tu_terminal_id')) {
+    throw new Error('Mercado Pago Terminal ID no configurado en el archivo .env');
+  }
+
+  const idempotencyKey = crypto.randomUUID();
+
+  const payload = {
+    type: 'print',
+    external_reference: `logo_${Date.now()}`,
+    config: {
+      point: {
+        terminal_id: terminalId,
+        subtype: 'image'
+      }
+    },
+    content: logoBase64
+  };
+
+  console.log(`[Impresora] Enviando logotipo del Pecado a la terminal: ${terminalId}...`);
 
   const response = await axios.post(
     'https://api.mercadopago.com/terminals/v1/actions',
@@ -650,6 +713,15 @@ app.post('/create-order', async (req, res) => {
         }
       }
     );
+
+    // Obtener el ID de la orden creada para iniciar polling en segundo plano
+    const orderId = response.data.id;
+    if (orderId) {
+      startOrderPolling(orderId);
+    } else {
+      console.warn('[Cobro] La API de Mercado Pago no devolvió un ID de orden. No se iniciará polling.');
+    }
+
     return res.status(200).json({ success: true, message: 'Orden de cobro enviada a la terminal', data: response.data });
   } catch (error) {
     console.error('[Cobro] Error al crear la orden de cobro:', JSON.stringify(error.response?.data, null, 2) || error.message);
@@ -738,6 +810,110 @@ function markPaymentAsPrinted(paymentId) {
   }
 }
 
+// Función global para procesar un pago aprobado, imprimir logo y poema
+async function processApprovedPayment(paymentId, amount) {
+  if (!paymentId) return;
+  
+  const paymentIdStr = paymentId.toString();
+  if (isPaymentAlreadyPrinted(paymentIdStr)) {
+    console.log(`[Impresora] El pago ${paymentIdStr} ya fue procesado e impreso. Evitando duplicado.`);
+    return;
+  }
+
+  console.log(`[Impresora] ¡Pago aprobado confirmado! ID: ${paymentIdStr}, Monto: $${amount}.`);
+  
+  // 1. Intentar imprimir la imagen del logo
+  try {
+    if (logoBase64) {
+      console.log('[Impresora] Imprimiendo logotipo de El Pecado...');
+      await printImageOnTerminal();
+      // Pausa de 1.5 segundos para que la impresora física respire y no junte los tickets
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+  } catch (imgError) {
+    console.error('[Impresora] Error imprimiendo logotipo:', imgError.response?.data || imgError.message);
+    // Continuamos para no dejar al cliente sin su poema
+  }
+
+  // 2. Imprimir el poema con los detalles
+  try {
+    console.log('[Impresora] Imprimiendo poema...');
+    const poem = await getRandomPoem();
+    
+    // Agregar información de donación al poema para personalizarlo
+    const customText = `${poem}\n\n[ Colaboración: $${amount} ]`;
+    
+    const printResult = await printOnTerminal(customText);
+    console.log('[Impresora] Impresión de poema enviada con éxito. ID de acción:', printResult.id);
+    
+    // Registrar en el archivo de control
+    markPaymentAsPrinted(paymentIdStr);
+  } catch (poemError) {
+    console.error('[Impresora] Error imprimiendo poema:', poemError.response?.data || poemError.message);
+  }
+}
+
+// Función para realizar polling del estado de una orden de cobro
+async function startOrderPolling(orderId, maxAttempts = 100, intervalMs = 3000) {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  console.log(`[Polling] Iniciando consulta de estado para la orden ${orderId} (${maxAttempts} intentos, cada ${intervalMs}ms)...`);
+  
+  let attempts = 0;
+  const timer = setInterval(async () => {
+    attempts++;
+    if (attempts > maxAttempts) {
+      console.log(`[Polling] Se alcanzó el límite de tiempo para la orden ${orderId}. Finalizando consulta.`);
+      clearInterval(timer);
+      return;
+    }
+    
+    try {
+      const response = await axios.get(
+        `https://api.mercadopago.com/v1/orders/${orderId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        }
+      );
+      
+      const orderData = response.data;
+      const status = orderData.status;
+      
+      console.log(`[Polling] Orden ${orderId} (Intento ${attempts}/${maxAttempts}) -> Estado actual: ${status}`);
+      
+      if (status === 'processed') {
+        console.log(`[Polling] ¡Orden ${orderId} ha sido procesada correctamente (Pago Aprobado)!`);
+        clearInterval(timer);
+        
+        // Buscar el ID de pago y monto en la orden
+        const payments = orderData.payments || [];
+        const amount = orderData.amount || (payments.length > 0 ? payments[0].transaction_amount : 0);
+        
+        if (payments.length > 0) {
+          for (const payment of payments) {
+            if (payment.status === 'approved' || payment.status === 'processed') {
+              console.log(`[Polling] Encontrado pago aprobado en la orden. ID: ${payment.id}, Monto: $${payment.transaction_amount}`);
+              await processApprovedPayment(payment.id, payment.transaction_amount);
+            }
+          }
+        } else {
+          // Fallback con ID virtual si no viene la lista detallada de pagos pero está 'processed'
+          const virtualPaymentId = `order_${orderId}`;
+          console.log(`[Polling] Sin pagos explícitos en la respuesta. Utilizando ID virtual: ${virtualPaymentId}`);
+          await processApprovedPayment(virtualPaymentId, amount);
+        }
+      } else if (status === 'failed' || status === 'cancelled') {
+        console.log(`[Polling] La orden ${orderId} terminó con estado fallido o cancelado (${status}). Deteniendo polling.`);
+        clearInterval(timer);
+      }
+    } catch (err) {
+      console.error(`[Polling] Error consultando estado de orden ${orderId}:`, err.response?.data || err.message);
+      // No detenemos el polling en caso de un error temporal de red (timeout, etc.)
+    }
+  }, intervalMs);
+}
+
 // Endpoint de Webhooks para Mercado Pago
 app.post('/webhook', async (req, res) => {
   try {
@@ -748,29 +924,6 @@ app.post('/webhook', async (req, res) => {
     console.log(`[Webhook] Cuerpo completo de la notificación:`, JSON.stringify(req.body, null, 2));
 
     const accessToken = process.env.MP_ACCESS_TOKEN;
-
-    // Función auxiliar para procesar un pago aprobado e imprimir el poema
-    async function processApprovedPayment(paymentId, amount) {
-      if (!paymentId) return;
-      
-      const paymentIdStr = paymentId.toString();
-      if (isPaymentAlreadyPrinted(paymentIdStr)) {
-        console.log(`[Webhook] El pago ${paymentIdStr} ya fue procesado e impreso. Evitando duplicado.`);
-        return;
-      }
-
-      console.log(`[Webhook] ¡Pago aprobado confirmado! ID: ${paymentIdStr}, Monto: $${amount}. Seleccionando poema...`);
-      const poem = await getRandomPoem();
-      
-      // Agregar información de donación al poema para personalizarlo
-      const customText = `${poem}\n\n[ Colaboración: $${amount} ]`;
-      
-      const printResult = await printOnTerminal(customText);
-      console.log('[Webhook] Impresión enviada con éxito a la terminal. ID de acción:', printResult.id);
-      
-      // Registrar en el archivo de control
-      markPaymentAsPrinted(paymentIdStr);
-    }
 
     // Extraer el ID del recurso (soporta data.id, id, o la URL del resource)
     let resourceId = data?.id || id;
