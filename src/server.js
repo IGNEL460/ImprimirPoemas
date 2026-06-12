@@ -631,7 +631,7 @@ app.post('/create-order', async (req, res) => {
     transactions: {
       payments: [
         {
-          amount: numericAmount
+          amount: numericAmount.toFixed(2)
         }
       ]
     }
