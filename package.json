@@ -1,0 +1,20 @@
+{
+  "name": "mercadopago-poemas",
+  "version": "1.0.0",
+  "description": "Imprime poemas al azar usando la impresora de Mercado Pago Point Smart al recibir pagos",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.3"
+  }
+}
