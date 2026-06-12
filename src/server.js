@@ -629,8 +629,11 @@ app.post('/create-order', async (req, res) => {
       }
     },
     transactions: {
-      amount: numericAmount,
-      description: 'Colaboración - Poemas al Viento'
+      payments: [
+        {
+          amount: numericAmount
+        }
+      ]
     }
   };
 
