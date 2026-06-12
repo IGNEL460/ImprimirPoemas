@@ -701,60 +701,163 @@ app.post('/change-terminal-mode', async (req, res) => {
   }
 });
 
+// --- Idempotencia de Impresión de Poemas ---
+const PRINTED_PAYMENTS_FILE = path.join(__dirname, '../printed_payments.json');
+const printedPaymentsCache = new Set();
+
+// Cargar caché inicial desde el archivo si existe
+try {
+  if (fs.existsSync(PRINTED_PAYMENTS_FILE)) {
+    const data = JSON.parse(fs.readFileSync(PRINTED_PAYMENTS_FILE, 'utf8'));
+    if (Array.isArray(data)) {
+      data.forEach(id => printedPaymentsCache.add(id.toString()));
+    }
+    console.log(`[Caché] Historial de pagos impresos cargado: ${printedPaymentsCache.size} pagos.`);
+  }
+} catch (err) {
+  console.error('[Caché] Error cargando historial de pagos impresos:', err);
+}
+
+function isPaymentAlreadyPrinted(paymentId) {
+  if (!paymentId) return false;
+  return printedPaymentsCache.has(paymentId.toString());
+}
+
+function markPaymentAsPrinted(paymentId) {
+  if (!paymentId) return;
+  const idStr = paymentId.toString();
+  if (printedPaymentsCache.has(idStr)) return;
+
+  printedPaymentsCache.add(idStr);
+  
+  try {
+    const data = Array.from(printedPaymentsCache);
+    fs.writeFileSync(PRINTED_PAYMENTS_FILE, JSON.stringify(data, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[Caché] Error guardando historial de pagos impresos:', err);
+  }
+}
+
 // Endpoint de Webhooks para Mercado Pago
 app.post('/webhook', async (req, res) => {
   try {
-    const { action, type, data } = req.body;
-    console.log(`[Webhook] Recibida notificación. Tipo: ${type}, Acción: ${action}`);
+    const { action, type, data, resource, id } = req.body;
+    const topic = type || req.body.topic;
+    
+    console.log(`[Webhook] Recibida notificación. Tipo/Tema: ${topic}, Acción: ${action}`);
+    console.log(`[Webhook] Cuerpo completo de la notificación:`, JSON.stringify(req.body, null, 2));
 
-    // Solo procesamos eventos de tipo 'payment' creados o actualizados
-    if (type === 'payment' && (action === 'payment.created' || action === 'payment.updated')) {
-      const paymentId = data?.id;
-      if (!paymentId) {
-        return res.status(400).send('ID de pago faltante');
+    const accessToken = process.env.MP_ACCESS_TOKEN;
+
+    // Función auxiliar para procesar un pago aprobado e imprimir el poema
+    async function processApprovedPayment(paymentId, amount) {
+      if (!paymentId) return;
+      
+      const paymentIdStr = paymentId.toString();
+      if (isPaymentAlreadyPrinted(paymentIdStr)) {
+        console.log(`[Webhook] El pago ${paymentIdStr} ya fue procesado e impreso. Evitando duplicado.`);
+        return;
       }
 
-      console.log(`[Webhook] Consultando detalles del pago: ${paymentId}...`);
-      const accessToken = process.env.MP_ACCESS_TOKEN;
+      console.log(`[Webhook] ¡Pago aprobado confirmado! ID: ${paymentIdStr}, Monto: $${amount}. Seleccionando poema...`);
+      const poem = await getRandomPoem();
+      
+      // Agregar información de donación al poema para personalizarlo
+      const customText = `${poem}\n\n[ Colaboración: $${amount} ]`;
+      
+      const printResult = await printOnTerminal(customText);
+      console.log('[Webhook] Impresión enviada con éxito a la terminal. ID de acción:', printResult.id);
+      
+      // Registrar en el archivo de control
+      markPaymentAsPrinted(paymentIdStr);
+    }
 
-      // Obtener detalles del pago
-      const paymentResponse = await axios.get(
-        `https://api.mercadopago.com/v1/payments/${paymentId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
+    // Extraer el ID del recurso (soporta data.id, id, o la URL del resource)
+    let resourceId = data?.id || id;
+    if (!resourceId && resource) {
+      const parts = resource.split('/');
+      resourceId = parts[parts.length - 1];
+    }
+
+    // Caso 1: Notificación de tipo 'payment' (incluyendo point_integration_wh)
+    if (topic === 'payment' || topic === 'point_integration_wh') {
+      if (!resourceId) {
+        console.warn('[Webhook] Notificación de pago recibida pero sin ID de recurso');
+        return res.status(200).send('Falta ID de recurso');
+      }
+
+      console.log(`[Webhook] Consultando detalles del pago ${resourceId}...`);
+      
+      try {
+        const paymentResponse = await axios.get(
+          `https://api.mercadopago.com/v1/payments/${resourceId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          }
+        );
+
+        const paymentData = paymentResponse.data;
+        const status = paymentData.status;
+        const statusDetail = paymentData.status_detail;
+        const amount = paymentData.transaction_amount;
+
+        console.log(`[Webhook] Detalles de pago ${resourceId} -> Estado: ${status} (${statusDetail}), Monto: $${amount}`);
+
+        if (status === 'approved') {
+          await processApprovedPayment(resourceId, amount);
+        } else {
+          console.log(`[Webhook] El pago ${resourceId} aún no está aprobado. Estado actual: ${status}`);
+        }
+      } catch (err) {
+        console.error(`[Webhook] Error al consultar pago ${resourceId}:`, err.response?.data || err.message);
+      }
+    } 
+    // Caso 2: Notificación de tipo 'merchant_order'
+    else if (topic === 'merchant_order') {
+      if (!resourceId) {
+        console.warn('[Webhook] Notificación de orden comercial recibida pero sin ID de recurso');
+        return res.status(200).send('Falta ID de recurso');
+      }
+
+      console.log(`[Webhook] Consultando detalles de la orden comercial ${resourceId}...`);
+      
+      try {
+        const orderResponse = await axios.get(
+          `https://api.mercadopago.com/merchant_orders/${resourceId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          }
+        );
+
+        const orderData = orderResponse.data;
+        const payments = orderData.payments || [];
+        console.log(`[Webhook] Orden comercial ${resourceId} tiene ${payments.length} pagos registrados.`);
+
+        for (const payment of payments) {
+          if (payment.status === 'approved') {
+            console.log(`[Webhook] Encontrado pago aprobado en orden ${resourceId}. ID de pago: ${payment.id}, Monto: $${payment.transaction_amount}`);
+            await processApprovedPayment(payment.id, payment.transaction_amount);
           }
         }
-      );
-
-      const paymentData = paymentResponse.data;
-      const status = paymentData.status;
-      const statusDetail = paymentData.status_detail;
-      const amount = paymentData.transaction_amount;
-
-      console.log(`[Webhook] Estado del pago ${paymentId}: ${status} (${statusDetail}) por $${amount}`);
-
-      // Si el pago está aprobado, elegimos un poema e imprimimos
-      if (status === 'approved') {
-        console.log(`[Webhook] ¡Pago aprobado! Seleccionando poema...`);
-        const poem = await getRandomPoem();
-        
-        // Agregar información de donación al poema para personalizarlo
-        const customText = `${poem}\n\n[ Colaboración: $${amount} ]`;
-        
-        const printResult = await printOnTerminal(customText);
-        console.log('[Webhook] Impresión completada con éxito:', printResult.id);
-      } else {
-        console.log(`[Webhook] El pago no está aprobado aún. Estado actual: ${status}`);
+      } catch (err) {
+        console.error(`[Webhook] Error al consultar orden comercial ${resourceId}:`, err.response?.data || err.message);
       }
+    } 
+    // Caso 3: Notificación de otro tipo no esperado
+    else {
+      console.log(`[Webhook] Notificación recibida para tema no configurado directamente (${topic}). Omitiendo.`);
     }
 
     // Mercado Pago requiere responder siempre con un 200 OK para confirmar recepción
-    return res.status(200).send('Webhook procesado');
+    return res.status(200).send('Webhook recibido');
   } catch (error) {
-    console.error('[Webhook] Error procesando webhook:', error.message);
-    // Respondemos con 200 de todas formas para evitar reintentos infinitos de MP si el error es de nuestra lógica
-    return res.status(200).send('Error procesado internamente');
+    console.error('[Webhook] Error crítico procesando webhook:', error.message);
+    // Respondemos con 200 de todas formas para evitar reintentos infinitos de MP
+    return res.status(200).send('Webhook manejado con error interno');
   }
 });
 
