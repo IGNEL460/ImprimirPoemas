@@ -441,7 +441,7 @@ app.get('/', async (req, res) => {
             </p>
             <div style="display: flex; gap: 0.5rem; align-items: center;">
               <span style="font-size: 1.2rem; font-weight: bold; color: var(--primary-color);">$</span>
-              <input type="number" id="chargeAmount" value="10.00" step="0.01" min="0.01" style="flex: 1; padding: 0.8rem; border-radius: 10px; border: 1px solid var(--border-color); background: rgba(0, 0, 0, 0.4); color: white; font-family: Outfit, sans-serif; font-size: 1rem;">
+              <input type="number" id="chargeAmount" value="15.00" step="0.01" min="15.00" style="flex: 1; padding: 0.8rem; border-radius: 10px; border: 1px solid var(--border-color); background: rgba(0, 0, 0, 0.4); color: white; font-family: Outfit, sans-serif; font-size: 1rem;">
             </div>
             <button id="btnCharge" class="btn" style="background: linear-gradient(135deg, #34d399 0%, #10b981 100%);">
               💳 Enviar Cobro a Point
@@ -613,8 +613,8 @@ app.post('/create-order', async (req, res) => {
   }
 
   const numericAmount = parseFloat(amount);
-  if (isNaN(numericAmount) || numericAmount <= 0) {
-    return res.status(400).json({ error: 'El monto ingresado debe ser mayor a 0' });
+  if (isNaN(numericAmount) || numericAmount < 15.00) {
+    return res.status(400).json({ error: 'El monto mínimo de cobro en Mercado Pago es de $15.00 ARS' });
   }
 
   const idempotencyKey = crypto.randomUUID();
