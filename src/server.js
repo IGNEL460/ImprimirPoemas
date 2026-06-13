@@ -511,6 +511,9 @@ app.get('/', async (req, res) => {
             <button id="btnTest" class="btn" ${!hasToken || !hasTerminal ? 'disabled' : ''}>
               ✨ Imprimir Poema de Prueba
             </button>
+            <button id="btnTestLogo" class="btn btn-secondary" ${!hasToken || !hasTerminal ? 'disabled' : ''} style="margin-top: 0.5rem; border-color: rgba(192, 132, 252, 0.3);">
+              🖼️ Imprimir Logo de Prueba
+            </button>
           </div>
 
           <!-- CARD DE CONFIGURACIÓN WEBHOOK -->
@@ -589,6 +592,32 @@ app.get('/', async (req, res) => {
             } finally {
               btnTest.disabled = false;
               btnTest.textContent = '✨ Imprimir Poema de Prueba';
+            }
+          });
+        }
+
+        // Manejar botón de prueba de impresión de logo
+        const btnTestLogo = document.getElementById('btnTestLogo');
+
+        if (btnTestLogo) {
+          btnTestLogo.addEventListener('click', async () => {
+            btnTestLogo.disabled = true;
+            btnTestLogo.textContent = 'Enviando logo...';
+            
+            try {
+              const response = await fetch('/test-print-logo', { method: 'POST' });
+              const data = await response.json();
+              
+              if (response.ok) {
+                showToast('¡Logo de prueba enviado a la ticketera!');
+              } else {
+                showToast('Error: ' + data.error);
+              }
+            } catch (err) {
+              showToast('Error de red al intentar imprimir.');
+            } finally {
+              btnTestLogo.disabled = false;
+              btnTestLogo.textContent = '🖼️ Imprimir Logo de Prueba';
             }
           });
         }
@@ -1062,6 +1091,20 @@ app.post('/test-print', async (req, res) => {
   } catch (error) {
     const errorDetails = error.response?.data ? JSON.stringify(error.response.data) : error.message;
     console.error('[Prueba] Error en la impresión de prueba:', errorDetails);
+    const errorMessage = error.response?.data?.message || (error.response?.data?.error_messages ? error.response.data.error_messages.join(', ') : null) || error.message;
+    return res.status(500).json({ error: errorMessage });
+  }
+});
+
+// Endpoint de Prueba de Impresión de Logo Manual
+app.post('/test-print-logo', async (req, res) => {
+  try {
+    console.log('[Prueba] Solicitando impresión de logo de prueba manual...');
+    const result = await printImageOnTerminal();
+    return res.status(200).json({ success: true, message: 'Impresión de logo enviada', result });
+  } catch (error) {
+    const errorDetails = error.response?.data ? JSON.stringify(error.response.data) : error.message;
+    console.error('[Prueba] Error en la impresión de logo:', errorDetails);
     const errorMessage = error.response?.data?.message || (error.response?.data?.error_messages ? error.response.data.error_messages.join(', ') : null) || error.message;
     return res.status(500).json({ error: errorMessage });
   }
