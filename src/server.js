@@ -957,7 +957,7 @@ app.get('/pecar', (req, res) => {
           </div>
 
           <button id="btnPecar" class="btn-action" onclick="enviarCobro()">
-            🍎 Pecar con Tarjeta
+            🍎 Pecar... digo Pagar
           </button>
         </div>
 
@@ -1034,7 +1034,7 @@ app.get('/pecar', (req, res) => {
             showToast('Error de conexión con el servidor.');
           } finally {
             btn.disabled = false;
-            btn.textContent = '🍎 Pecar con Tarjeta';
+            btn.textContent = '🍎 Pecar... digo Pagar';
           }
         }
 
