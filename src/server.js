@@ -1302,8 +1302,8 @@ async function processApprovedPayment(paymentId, amount) {
         () => printImageOnTerminal(),
         'Logo'
       );
-      // Pausa reducida de 2.2 segundos dado que el logo es ahora pequeño (200px) y se imprime casi instantáneamente
-      await new Promise(resolve => setTimeout(resolve, 2200));
+      // Pausa de 5 segundos para asegurar que el papel del logotipo termine de salir antes de enviar el poema
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
   } catch (imgError) {
     console.error('[Impresora] Falló definitivamente la impresión del logotipo:', imgError.message);
