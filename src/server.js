@@ -896,10 +896,9 @@ async function processApprovedPayment(paymentId, amount) {
   try {
     console.log('[Impresora] Encolando impresión de poema...');
     const poem = await getRandomPoem();
-    const customText = `${poem}\n\n[ Colaboración: $${amount} ]`;
     
     await executePrintActionWithRetry(
-      () => printOnTerminal(customText),
+      () => printOnTerminal(poem),
       'Poema'
     );
     
