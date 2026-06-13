@@ -678,6 +678,380 @@ app.get('/', async (req, res) => {
   `);
 });
 
+// Ruta para servir la imagen del logotipo de El Pecado
+app.get('/logo.jpg', (req, res) => {
+  res.sendFile(path.join(__dirname, 'logo.jpg'));
+});
+
+// Ruta para la interfaz móvil simplificada de El Pecado ("Pecar con Tarjeta")
+app.get('/pecar', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>El Pecado - Colaborar</title>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+      <style>
+        :root {
+          --bg-color: #0b0303;
+          --card-bg: rgba(22, 10, 10, 0.7);
+          --border-color: rgba(220, 38, 38, 0.15);
+          --text-color: #fbecec;
+          --text-muted: #cda2a2;
+          --primary-color: #ef4444;
+          --primary-hover: #dc2626;
+          --accent-color: #fbbf24;
+        }
+        
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+        }
+
+        body {
+          font-family: 'Outfit', sans-serif;
+          background-color: var(--bg-color);
+          background-image: 
+            radial-gradient(circle at 50% 20%, rgba(239, 68, 68, 0.15) 0%, transparent 50%),
+            radial-gradient(circle at 50% 80%, rgba(251, 191, 36, 0.04) 0%, transparent 50%);
+          color: var(--text-color);
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 1.5rem;
+          overflow-x: hidden;
+        }
+
+        .container {
+          width: 100%;
+          max-width: 400px;
+          text-align: center;
+        }
+
+        .logo-container {
+          margin-bottom: 1.2rem;
+        }
+
+        .logo-img {
+          width: 110px;
+          height: auto;
+          border-radius: 50%;
+          border: 2px solid var(--border-color);
+          box-shadow: 0 0 25px rgba(239, 68, 68, 0.25);
+          animation: float 4s ease-in-out infinite;
+        }
+
+        @keyframes float {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          50% { transform: translateY(-6px) rotate(1deg); }
+        }
+
+        h1 {
+          font-family: 'Playfair Display', serif;
+          font-size: 2.3rem;
+          font-weight: 700;
+          margin-bottom: 0.3rem;
+          color: #fff;
+          text-shadow: 0 2px 10px rgba(239, 68, 68, 0.2);
+        }
+
+        .tagline {
+          color: var(--text-muted);
+          font-size: 0.95rem;
+          font-style: italic;
+          margin-bottom: 2rem;
+        }
+
+        .card {
+          background: var(--card-bg);
+          backdrop-filter: blur(16px);
+          border: 1px solid var(--border-color);
+          border-radius: 24px;
+          padding: 2rem 1.5rem;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .instructions {
+          font-size: 0.9rem;
+          color: var(--text-muted);
+          margin-bottom: 1.5rem;
+          line-height: 1.5;
+        }
+
+        .amount-display {
+          font-size: 3rem;
+          font-weight: 800;
+          color: var(--accent-color);
+          margin-bottom: 1.5rem;
+          font-family: 'Outfit', sans-serif;
+          text-shadow: 0 0 15px rgba(251, 191, 36, 0.25);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.2rem;
+        }
+
+        .presets {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 0.6rem;
+          margin-bottom: 1.5rem;
+        }
+
+        .preset-btn {
+          padding: 0.8rem 0.3rem;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 12px;
+          color: #fff;
+          font-weight: 600;
+          font-size: 0.95rem;
+          cursor: pointer;
+          transition: all 0.2s;
+          outline: none;
+        }
+
+        .preset-btn:hover {
+          background: rgba(239, 68, 68, 0.12);
+          border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .preset-btn.active {
+          background: var(--primary-color);
+          border-color: var(--primary-color);
+          color: white;
+          box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+        }
+
+        .custom-input-container {
+          display: flex;
+          background: rgba(0, 0, 0, 0.35);
+          border: 1px solid var(--border-color);
+          border-radius: 12px;
+          overflow: hidden;
+          margin-bottom: 1.5rem;
+          align-items: center;
+          padding-left: 1rem;
+        }
+
+        .custom-input-symbol {
+          color: var(--text-muted);
+          font-weight: 600;
+          font-size: 1rem;
+        }
+
+        .custom-input {
+          width: 100%;
+          padding: 0.8rem;
+          border: none;
+          background: transparent;
+          color: white;
+          font-family: 'Outfit', sans-serif;
+          font-size: 1rem;
+          outline: none;
+        }
+
+        .btn-action {
+          display: inline-block;
+          width: 100%;
+          padding: 1.1rem;
+          background: linear-gradient(135deg, var(--primary-color) 0%, #b91c1c 100%);
+          border: none;
+          border-radius: 14px;
+          color: white;
+          font-size: 1.1rem;
+          font-weight: 800;
+          letter-spacing: 0.5px;
+          cursor: pointer;
+          transition: all 0.2s;
+          box-shadow: 0 4px 20px rgba(239, 68, 68, 0.25);
+          text-transform: uppercase;
+          outline: none;
+        }
+
+        .btn-action:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 25px rgba(239, 68, 68, 0.45);
+        }
+
+        .btn-action:active:not(:disabled) {
+          transform: scale(0.98);
+        }
+
+        .btn-action:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+
+        .footer {
+          margin-top: 2rem;
+          font-size: 0.75rem;
+          color: var(--text-muted);
+          letter-spacing: 1px;
+        }
+
+        .toast {
+          position: fixed;
+          bottom: 25px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: #190606;
+          border: 1px solid var(--primary-color);
+          color: #fff;
+          padding: 0.8rem 1.2rem;
+          border-radius: 12px;
+          box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+          display: none;
+          z-index: 100;
+          animation: fadeInUp 0.3s ease-out;
+          font-size: 0.85rem;
+          text-align: center;
+          width: 90%;
+          max-width: 350px;
+        }
+
+        @keyframes fadeInUp {
+          from { transform: translate(-50%, 15px); opacity: 0; }
+          to { transform: translate(-50%, 0); opacity: 1; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="logo-container">
+          <img src="/logo.jpg" alt="El Pecado Logo" class="logo-img" onerror="this.src='https://img.icons8.com/color/120/apple.png'">
+        </div>
+        
+        <h1>El Pecado</h1>
+        <div class="tagline">¿Cuál será tu tentación esta noche?</div>
+
+        <div class="card">
+          <div class="instructions">
+            Elige o digita el monto de tu colaboración para recibir tu ticket poético en el Point.
+          </div>
+
+          <div class="amount-display">
+            <span>$</span><span id="amountVal">200.00</span>
+          </div>
+
+          <div class="presets">
+            <button class="preset-btn" onclick="selectPreset(50)">$50</button>
+            <button class="preset-btn" onclick="selectPreset(100)">$100</button>
+            <button class="preset-btn active" onclick="selectPreset(200)">$200</button>
+            <button class="preset-btn" onclick="selectPreset(500)">$500</button>
+            <button class="preset-btn" onclick="selectPreset(1000)">$1000</button>
+            <button class="preset-btn" onclick="selectPreset(2000)">$2000</button>
+          </div>
+
+          <div class="custom-input-container">
+            <span class="custom-input-symbol">Otro monto: $</span>
+            <input type="number" id="customAmount" class="custom-input" placeholder="Ej: 150" min="15" step="5" oninput="handleCustomInput()">
+          </div>
+
+          <button id="btnPecar" class="btn-action" onclick="enviarCobro()">
+            🍎 Pecar con Tarjeta
+          </button>
+        </div>
+
+        <div class="footer">
+          EL PECADO TEATRO &bull; ELPECADO.AR
+        </div>
+      </div>
+
+      <div id="toast" class="toast"></div>
+
+      <script>
+        let activeAmount = 200;
+
+        function selectPreset(amount) {
+          activeAmount = amount;
+          document.getElementById('amountVal').textContent = amount.toFixed(2);
+          document.getElementById('customAmount').value = '';
+          
+          const buttons = document.querySelectorAll('.preset-btn');
+          buttons.forEach(btn => {
+            if (btn.textContent === '$' + amount) {
+              btn.classList.add('active');
+            } else {
+              btn.classList.remove('active');
+            }
+          });
+        }
+
+        function handleCustomInput() {
+          const val = parseFloat(document.getElementById('customAmount').value);
+          
+          const buttons = document.querySelectorAll('.preset-btn');
+          buttons.forEach(btn => btn.classList.remove('active'));
+
+          if (!isNaN(val) && val >= 15) {
+            activeAmount = val;
+            document.getElementById('amountVal').textContent = val.toFixed(2);
+          } else {
+            activeAmount = 0;
+            document.getElementById('amountVal').textContent = '0.00';
+          }
+        }
+
+        async function enviarCobro() {
+          if (activeAmount < 15) {
+            showToast('El monto mínimo para pecar es de $15.00 ARS');
+            return;
+          }
+
+          const btn = document.getElementById('btnPecar');
+          btn.disabled = true;
+          btn.textContent = '🍎 Tentando al Point...';
+
+          try {
+            const response = await fetch('/create-order', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                amount: activeAmount,
+                notificationUrl: window.location.origin + '/webhook'
+              })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+              showToast('¡Monto enviado! Pasá la tarjeta en la terminal Point.');
+            } else {
+              showToast('Error: ' + data.error);
+            }
+          } catch (err) {
+            showToast('Error de conexión con el servidor.');
+          } finally {
+            btn.disabled = false;
+            btn.textContent = '🍎 Pecar con Tarjeta';
+          }
+        }
+
+        function showToast(msg) {
+          const toast = document.getElementById('toast');
+          toast.textContent = msg;
+          toast.style.display = 'block';
+          setTimeout(() => {
+            toast.style.display = 'none';
+          }, 4000);
+        }
+      </script>
+    </body>
+    </html>
+  `);
+});
+
 // Endpoint de Prueba de Impresión Manual
 app.post('/test-print', async (req, res) => {
   try {
