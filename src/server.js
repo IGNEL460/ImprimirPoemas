@@ -36,14 +36,45 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Función auxiliar para realizar ajuste de línea (Word Wrap) sin cortar palabras
+function wrapText(text, limit = 30) {
+  const words = text.split(' ');
+  const lines = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    if ((currentLine + (currentLine ? ' ' : '') + word).length <= limit) {
+      currentLine += (currentLine ? ' ' : '') + word;
+    } else {
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+      currentLine = word;
+    }
+  }
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+  return lines;
+}
+
 // Formatear poema con las etiquetas nativas de impresión de Mercado Pago
 function formatPoemForPoint(poem) {
-  const lines = poem.split('\n');
-  const formattedLines = lines.map(line => {
+  const originalLines = poem.split('\n');
+  const formattedLines = [];
+
+  for (const line of originalLines) {
     const trimmed = line.trim();
-    if (trimmed === '') return '{br}';
-    return `{center}${trimmed}{/center}`;
-  });
+    if (trimmed === '') {
+      formattedLines.push('{br}');
+    } else {
+      // Ajustar cada línea del poema a un máximo de 30 caracteres para evitar recortes en la ticketera
+      const wrapped = wrapText(trimmed, 30);
+      for (const wl of wrapped) {
+        formattedLines.push(`{center}${wl}{/center}`);
+      }
+    }
+  }
 
   let content = `{br}{center}{b}{w}✿ UN POEMA PARA TI ✿{/w}{/b}{/center}{br}{br}`;
   content += formattedLines.join('{br}');
