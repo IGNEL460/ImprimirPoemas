@@ -841,6 +841,30 @@ function markPaymentAsPrinted(paymentId) {
   }
 }
 
+// Función genérica para ejecutar una acción de impresión en la terminal con reintentos si está ocupada
+async function executePrintActionWithRetry(printFn, actionName, maxAttempts = 10, delayMs = 3000) {
+  let attempts = 0;
+  while (attempts < maxAttempts) {
+    attempts++;
+    try {
+      console.log(`[Impresora] [${actionName}] Intento ${attempts}/${maxAttempts} de enviar a la terminal...`);
+      const result = await printFn();
+      console.log(`[Impresora] [${actionName}] Impresión enviada correctamente en el intento ${attempts}.`);
+      return result;
+    } catch (error) {
+      const errorDetails = error.response?.data ? JSON.stringify(error.response.data) : error.message;
+      console.warn(`[Impresora] [${actionName}] Intento ${attempts} falló. Detalles del error:`, errorDetails);
+      
+      if (attempts >= maxAttempts) {
+        throw error;
+      }
+      
+      console.log(`[Impresora] [${actionName}] La terminal podría estar ocupada. Reintentando en ${delayMs / 1000} segundos...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
 // Función global para procesar un pago aprobado, imprimir logo y poema
 async function processApprovedPayment(paymentId, amount) {
   if (!paymentId) return;
@@ -853,34 +877,36 @@ async function processApprovedPayment(paymentId, amount) {
 
   console.log(`[Impresora] ¡Pago aprobado confirmado! ID: ${paymentIdStr}, Monto: $${amount}.`);
   
-  // 1. Intentar imprimir la imagen del logo
+  // 1. Intentar imprimir la imagen del logo con reintentos
   try {
     if (logoBase64) {
-      console.log('[Impresora] Imprimiendo logotipo de El Pecado...');
-      await printImageOnTerminal();
-      // Pausa de 1.5 segundos para que la impresora física respire y no junte los tickets
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      console.log('[Impresora] Encolando impresión de logotipo...');
+      await executePrintActionWithRetry(
+        () => printImageOnTerminal(),
+        'Logo'
+      );
+      // Pausa de 5 segundos para asegurar que el papel del logotipo termine de salir antes de enviar el poema
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
   } catch (imgError) {
-    console.error('[Impresora] Error imprimiendo logotipo:', imgError.response?.data || imgError.message);
-    // Continuamos para no dejar al cliente sin su poema
+    console.error('[Impresora] Falló definitivamente la impresión del logotipo:', imgError.message);
   }
 
-  // 2. Imprimir el poema con los detalles
+  // 2. Imprimir el poema con reintentos
   try {
-    console.log('[Impresora] Imprimiendo poema...');
+    console.log('[Impresora] Encolando impresión de poema...');
     const poem = await getRandomPoem();
-    
-    // Agregar información de donación al poema para personalizarlo
     const customText = `${poem}\n\n[ Colaboración: $${amount} ]`;
     
-    const printResult = await printOnTerminal(customText);
-    console.log('[Impresora] Impresión de poema enviada con éxito. ID de acción:', printResult.id);
+    await executePrintActionWithRetry(
+      () => printOnTerminal(customText),
+      'Poema'
+    );
     
     // Registrar en el archivo de control
     markPaymentAsPrinted(paymentIdStr);
   } catch (poemError) {
-    console.error('[Impresora] Error imprimiendo poema:', poemError.response?.data || poemError.message);
+    console.error('[Impresora] Falló definitivamente la impresión del poema:', poemError.message);
   }
 }
 
