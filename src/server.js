@@ -712,6 +712,17 @@ app.get('/logo.jpg', (req, res) => {
   res.sendFile(path.join(__dirname, 'logo.jpg'));
 });
 
+// Ruta para servir el Manifiesto de la PWA
+app.get('/manifest.json', (req, res) => {
+  res.sendFile(path.join(__dirname, 'manifest.json'));
+});
+
+// Ruta para servir el Service Worker de la PWA
+app.get('/sw.js', (req, res) => {
+  res.set('Content-Type', 'application/javascript');
+  res.sendFile(path.join(__dirname, 'sw.js'));
+});
+
 // Ruta para la interfaz móvil simplificada de El Pecado ("Pecar con Tarjeta")
 app.get('/pecar', (req, res) => {
   res.send(`

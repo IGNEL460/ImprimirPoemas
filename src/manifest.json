@@ -1,0 +1,22 @@
+{
+  "name": "El Pecado - Colaborar",
+  "short_name": "El Pecado",
+  "description": "Elige tu colaboración para recibir tu ticket poético",
+  "start_url": "/pecar",
+  "display": "standalone",
+  "background_color": "#0b0303",
+  "theme_color": "#ef4444",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/logo.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}
