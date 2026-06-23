@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { getRandomPoem } from './poems.js';
+import { getRandomPoem, parsePoemMetadata } from './poems.js';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -251,6 +251,59 @@ app.get('/', async (req, res) => {
   } catch (e) {
     console.error('Error contando poemas:', e);
   }
+
+  // Leer estadísticas de impresión
+  let stats = {};
+  try {
+    if (fs.existsSync(STATS_FILE)) {
+      stats = JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'));
+    }
+  } catch (e) {
+    console.error('Error leyendo estadísticas de impresión:', e);
+  }
+
+  // Obtener todos los poemas y mapear sus estadísticas
+  let statsList = [];
+  try {
+    const poemsDir = path.join(__dirname, '../poemas');
+    if (fs.existsSync(poemsDir)) {
+      const files = fs.readdirSync(poemsDir).filter(f => f.endsWith('.txt'));
+      for (const file of files) {
+        const filePath = path.join(poemsDir, file);
+        const content = fs.readFileSync(filePath, 'utf8');
+        const { title, author } = parsePoemMetadata(file, content);
+        const prints = stats[file] || 0;
+        const status = getCopyrightStatus(author);
+        statsList.push({ file, title, author, prints, status });
+      }
+    }
+  } catch (e) {
+    console.error('Error generando lista de estadísticas:', e);
+  }
+
+  // Ordenar por cantidad de impresiones (descendente)
+  statsList.sort((a, b) => b.prints - a.prints);
+
+  const statsHtml = statsList.map(item => {
+    const statusStyle = item.status.isAlive 
+      ? `background: rgba(251, 191, 36, 0.1); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.2);`
+      : `background: rgba(52, 211, 153, 0.1); color: var(--success-color); border: 1px solid rgba(52, 211, 153, 0.2);`;
+
+    return `
+      <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+        <td style="padding: 0.8rem; font-weight: 600; color: #fff;">${item.title}</td>
+        <td style="padding: 0.8rem; color: var(--text-muted);">${item.author}</td>
+        <td style="padding: 0.8rem;">
+          <span style="display: inline-block; padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; ${statusStyle}">
+            ${item.status.label}
+          </span>
+        </td>
+        <td style="padding: 0.8rem; text-align: right; font-weight: bold; font-family: monospace; color: #fff; font-size: 1.05rem;">
+          ${item.prints}
+        </td>
+      </tr>
+    `;
+  }).join('');
 
   res.send(`
     <!DOCTYPE html>
@@ -560,6 +613,37 @@ app.get('/', async (req, res) => {
 
             ${terminalsHtml}
           </div>
+
+          <!-- CARD DE ESTADÍSTICAS -->
+          <div class="card full-width">
+            <h2>📊 Informe de Reproducción y Derechos de Autor</h2>
+            <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem;">
+              Control de impresiones para liquidación de regalías y cumplimiento de la Ley de Propiedad Intelectual N° 11.723 en Argentina.
+            </p>
+            <div style="overflow-x: auto;">
+              <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+                <thead>
+                  <tr style="border-bottom: 2px solid var(--border-color); color: var(--primary-color);">
+                    <th style="padding: 0.8rem;">Poema</th>
+                    <th style="padding: 0.8rem;">Autor</th>
+                    <th style="padding: 0.8rem;">Estado Legal</th>
+                    <th style="padding: 0.8rem; text-align: right;">Impresiones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${statsHtml}
+                </tbody>
+              </table>
+            </div>
+            <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+              <span style="font-size: 0.85rem; color: var(--text-muted);">
+                * Nota: Según la Ley 11.723, la reproducción de poemas de autores vivos (como Goyo.art3) requiere autorización expresa y puede estar sujeta al pago de aranceles.
+              </span>
+              <button id="btnResetStats" class="btn btn-secondary" style="width: auto; margin-top: 0; padding: 0.5rem 1rem; font-size: 0.85rem; border-color: rgba(248, 113, 113, 0.3); color: var(--error-color);">
+                🗑️ Reiniciar Contadores
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -692,6 +776,38 @@ app.get('/', async (req, res) => {
           } catch (err) {
             showToast('Error de red al configurar la terminal.');
           }
+        }
+
+        // Manejar botón de reinicio de estadísticas
+        const btnResetStats = document.getElementById('btnResetStats');
+        if (btnResetStats) {
+          btnResetStats.addEventListener('click', async () => {
+            if (!confirm('¿Estás seguro de que deseas reiniciar los contadores de impresión a cero? Esta acción no se puede deshacer.')) {
+              return;
+            }
+
+            btnResetStats.disabled = true;
+            btnResetStats.textContent = 'Reiniciando...';
+
+            try {
+              const response = await fetch('/reset-stats', { method: 'POST' });
+              const data = await response.json();
+
+              if (response.ok) {
+                showToast('¡Contadores reiniciados con éxito!');
+                setTimeout(() => {
+                  window.location.reload();
+                }, 1500);
+              } else {
+                showToast('Error: ' + data.error);
+              }
+            } catch (err) {
+              showToast('Error de red al intentar reiniciar estadísticas.');
+            } finally {
+              btnResetStats.disabled = false;
+              btnResetStats.textContent = '🗑️ Reiniciar Contadores';
+            }
+          });
         }
 
         function showToast(message) {
@@ -999,6 +1115,10 @@ app.get('/pecar', (req, res) => {
           <button id="btnPecar" class="btn-action" onclick="enviarCobro()">
             🍎 Pecar... digo Pagar
           </button>
+
+          <button id="btnImprimirEfectivo" class="btn-action" style="margin-top: 1rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.25);" onclick="imprimirEfectivo()">
+            💵 Imprimir Poema (Efectivo)
+          </button>
         </div>
 
         <div class="footer">
@@ -1078,6 +1198,34 @@ app.get('/pecar', (req, res) => {
           }
         }
 
+        async function imprimirEfectivo() {
+          const btn = document.getElementById('btnImprimirEfectivo');
+          btn.disabled = true;
+          btn.textContent = '💵 Imprimiendo...';
+
+          try {
+            const response = await fetch('/print-logo-and-poem', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+              showToast('¡Imprimiendo logo y poema para cobro en efectivo!');
+            } else {
+              showToast('Error: ' + data.error);
+            }
+          } catch (err) {
+            showToast('Error de conexión con el servidor.');
+          } finally {
+            btn.disabled = false;
+            btn.textContent = '💵 Imprimir Poema (Efectivo)';
+          }
+        }
+
         function showToast(msg) {
           const toast = document.getElementById('toast');
           toast.textContent = msg;
@@ -1096,8 +1244,9 @@ app.get('/pecar', (req, res) => {
 app.post('/test-print', async (req, res) => {
   try {
     console.log('[Prueba] Solicitando impresión de prueba manual...');
-    const poem = await getRandomPoem();
-    const result = await printOnTerminal(poem);
+    const { filename, content } = await getRandomPoem();
+    const result = await printOnTerminal(content);
+    await incrementPoemPrint(filename);
     return res.status(200).json({ success: true, message: 'Impresión de prueba enviada', result });
   } catch (error) {
     const errorDetails = error.response?.data ? JSON.stringify(error.response.data) : error.message;
@@ -1116,6 +1265,43 @@ app.post('/test-print-logo', async (req, res) => {
   } catch (error) {
     const errorDetails = error.response?.data ? JSON.stringify(error.response.data) : error.message;
     console.error('[Prueba] Error en la impresión de logo:', errorDetails);
+    const errorMessage = error.response?.data?.message || (error.response?.data?.error_messages ? error.response.data.error_messages.join(', ') : null) || error.message;
+    return res.status(500).json({ error: errorMessage });
+  }
+});
+
+// Endpoint para imprimir logo + poema en efectivo (sin transacción de cobro)
+app.post('/print-logo-and-poem', async (req, res) => {
+  try {
+    console.log('[Efectivo] Solicitando impresión de logo + poema en efectivo...');
+    
+    // 1. Logo
+    try {
+      if (logoBase64) {
+        console.log('[Efectivo] Encolando impresión de logotipo...');
+        await executePrintActionWithRetry(
+          () => printImageOnTerminal(),
+          'Logo'
+        );
+        // Pausa de 5 segundos para que termine el logotipo antes del poema
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    } catch (imgError) {
+      console.error('[Efectivo] Falló la impresión del logotipo:', imgError.message);
+    }
+
+    // 2. Poema
+    const { filename, content } = await getRandomPoem();
+    await executePrintActionWithRetry(
+      () => printOnTerminal(content),
+      'Poema'
+    );
+    await incrementPoemPrint(filename);
+
+    return res.status(200).json({ success: true, message: 'Impresión en efectivo enviada con éxito' });
+  } catch (error) {
+    const errorDetails = error.response?.data ? JSON.stringify(error.response.data) : error.message;
+    console.error('[Efectivo] Error en la impresión en efectivo:', errorDetails);
     const errorMessage = error.response?.data?.message || (error.response?.data?.error_messages ? error.response.data.error_messages.join(', ') : null) || error.message;
     return res.status(500).json({ error: errorMessage });
   }
@@ -1232,6 +1418,75 @@ app.post('/change-terminal-mode', async (req, res) => {
   }
 });
 
+// Endpoint para reiniciar las estadísticas de impresión
+app.post('/reset-stats', async (req, res) => {
+  try {
+    console.log('[Estadísticas] Reiniciando contadores de impresiones...');
+    if (fs.existsSync(STATS_FILE)) {
+      await fs.promises.writeFile(STATS_FILE, JSON.stringify({}, null, 2), 'utf8');
+    }
+    return res.status(200).json({ success: true, message: 'Estadísticas reiniciadas con éxito' });
+  } catch (error) {
+    console.error('[Estadísticas] Error al reiniciar estadísticas:', error.message);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Control de Impresiones de Poemas (Estadísticas y Regalías) ---
+const STATS_FILE = path.join(__dirname, '../poem_stats.json');
+
+async function incrementPoemPrint(filename) {
+  let stats = {};
+  try {
+    if (fs.existsSync(STATS_FILE)) {
+      const fileContent = await fs.promises.readFile(STATS_FILE, 'utf8');
+      stats = JSON.parse(fileContent);
+    }
+  } catch (err) {
+    console.error('[Estadísticas] Error al leer estadísticas:', err);
+  }
+
+  stats[filename] = (stats[filename] || 0) + 1;
+
+  try {
+    await fs.promises.writeFile(STATS_FILE, JSON.stringify(stats, null, 2), 'utf8');
+    console.log(`[Estadísticas] Contador incrementado para ${filename}. Total: ${stats[filename]}`);
+  } catch (err) {
+    console.error('[Estadísticas] Error al guardar estadísticas:', err);
+  }
+}
+
+const HISTORICAL_AUTHORS = [
+  'jose marti', 'josé martí',
+  'gustavo adolfo becquer', 'gustavo adolfo bécquer',
+  'alfonsina storni',
+  'baldomero fernandez moreno', 'baldomero fernández moreno',
+  'antonio machado',
+  'almafuerte',
+  'federico garcia lorca', 'federico garcía lorca',
+  'delmira agustini',
+  'sor juana ines de la cruz', 'sor juana inés de la cruz',
+  'rosalia de castro', 'rosalía de castro'
+];
+
+function getCopyrightStatus(author) {
+  const norm = author.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  if (norm === 'anonimo' || norm === 'anonima') {
+    return { label: 'Anónimo (Libre)', isAlive: false };
+  }
+  
+  const isHistorical = HISTORICAL_AUTHORS.some(hist => {
+    const normHist = hist.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return norm.includes(normHist) || normHist.includes(norm);
+  });
+  
+  if (isHistorical) {
+    return { label: 'Dominio Público (Exento)', isAlive: false };
+  } else {
+    return { label: 'Autor Vivo / Reservado', isAlive: true };
+  }
+}
+
 // --- Idempotencia de Impresión de Poemas ---
 const PRINTED_PAYMENTS_FILE = path.join(__dirname, '../printed_payments.json');
 const printedPaymentsCache = new Set();
@@ -1323,12 +1578,14 @@ async function processApprovedPayment(paymentId, amount) {
   // 2. Imprimir el poema con reintentos
   try {
     console.log('[Impresora] Encolando impresión de poema...');
-    const poem = await getRandomPoem();
+    const { filename, content } = await getRandomPoem();
     
     await executePrintActionWithRetry(
-      () => printOnTerminal(poem),
+      () => printOnTerminal(content),
       'Poema'
     );
+    
+    await incrementPoemPrint(filename);
     
     // Registrar en el archivo de control
     markPaymentAsPrinted(paymentIdStr);
