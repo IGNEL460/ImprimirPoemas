@@ -15,6 +15,43 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Archivo de configuración persistente para configuraciones en caliente (ej: Modo Sandbox)
+const SETTINGS_FILE = path.join(__dirname, '../settings.json');
+let isSandboxMode = false;
+
+// Cargar configuración de Sandbox inicial
+try {
+  if (fs.existsSync(SETTINGS_FILE)) {
+    const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+    isSandboxMode = settings.mpSandbox === true;
+    console.log(`[Config] Configuración cargada desde settings.json. Modo Sandbox: ${isSandboxMode}`);
+  } else {
+    // Autodetección: variable de entorno o token de Mercado Pago de prueba
+    isSandboxMode = process.env.MP_SANDBOX === 'true' || 
+                    (process.env.MP_ACCESS_TOKEN && (
+                      process.env.MP_ACCESS_TOKEN.startsWith('TEST-') || 
+                      process.env.MP_ACCESS_TOKEN.includes('370217986407903')
+                    ));
+    console.log(`[Config] Autodetectado Modo Sandbox: ${isSandboxMode}`);
+  }
+} catch (e) {
+  console.error('[Config] Error al cargar settings.json:', e);
+}
+
+// Guardar configuración
+function saveSettings() {
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ mpSandbox: isSandboxMode }, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[Config] Error al guardar settings.json:', e);
+  }
+}
+
+// Variables en memoria para simulaciones en Sandbox
+let simulatedPrints = [];
+let simulatedOrders = {};
+let simulatedPayments = {};
+
 // Cargar imagen de logo en Base64 para imprimir en terminales
 let logoBase64 = '';
 const logoPath = path.join(__dirname, 'logo.jpg');
@@ -110,15 +147,32 @@ async function printOnTerminal(text) {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   const terminalId = process.env.MP_TERMINAL_ID;
 
-  if (!accessToken || accessToken.includes('tu_access_token')) {
-    throw new Error('Mercado Pago Access Token no configurado en el archivo .env');
-  }
-  if (!terminalId || terminalId.includes('tu_terminal_id')) {
-    throw new Error('Mercado Pago Terminal ID no configurado en el archivo .env');
+  if (!isSandboxMode) {
+    if (!accessToken || accessToken.includes('tu_access_token')) {
+      throw new Error('Mercado Pago Access Token no configurado en el archivo .env');
+    }
+    if (!terminalId || terminalId.includes('tu_terminal_id')) {
+      throw new Error('Mercado Pago Terminal ID no configurado en el archivo .env');
+    }
   }
 
   const formattedContent = formatPoemForPoint(text);
   const idempotencyKey = crypto.randomUUID();
+
+  if (isSandboxMode) {
+    console.log(`[Impresora] [SIMULACIÓN] Encolando impresión de poema en historial.`);
+    const printJob = {
+      id: `print_sim_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      type: 'poem',
+      terminalId: terminalId || 'TEST_TERMINAL',
+      formattedContent: formattedContent,
+      rawText: text,
+      timestamp: new Date().toISOString()
+    };
+    simulatedPrints.unshift(printJob);
+    if (simulatedPrints.length > 50) simulatedPrints.pop();
+    return { id: printJob.id, status: 'processed', isSimulated: true };
+  }
 
   const payload = {
     type: 'print',
@@ -159,14 +213,31 @@ async function printImageOnTerminal() {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   const terminalId = process.env.MP_TERMINAL_ID;
 
-  if (!accessToken || accessToken.includes('tu_access_token')) {
-    throw new Error('Mercado Pago Access Token no configurado en el archivo .env');
-  }
-  if (!terminalId || terminalId.includes('tu_terminal_id')) {
-    throw new Error('Mercado Pago Terminal ID no configurado en el archivo .env');
+  if (!isSandboxMode) {
+    if (!accessToken || accessToken.includes('tu_access_token')) {
+      throw new Error('Mercado Pago Access Token no configurado en el archivo .env');
+    }
+    if (!terminalId || terminalId.includes('tu_terminal_id')) {
+      throw new Error('Mercado Pago Terminal ID no configurado en el archivo .env');
+    }
   }
 
   const idempotencyKey = crypto.randomUUID();
+
+  if (isSandboxMode) {
+    console.log(`[Impresora] [SIMULACIÓN] Encolando impresión de logotipo en historial.`);
+    const printJob = {
+      id: `logo_sim_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      type: 'logo',
+      terminalId: terminalId || 'TEST_TERMINAL',
+      formattedContent: '{center}{b}🖼️ LOGOTIPO DE EL PECADO TEATRO 🖼️{/b}{/center}',
+      rawText: 'Logo Base64',
+      timestamp: new Date().toISOString()
+    };
+    simulatedPrints.unshift(printJob);
+    if (simulatedPrints.length > 50) simulatedPrints.pop();
+    return { id: printJob.id, status: 'processed', isSimulated: true };
+  }
 
   const payload = {
     type: 'print',
@@ -1473,8 +1544,8 @@ app.get('/dashboard', (req, res) => {
 });
 app.get('/admin', async (req, res) => {
   const accessToken = process.env.MP_ACCESS_TOKEN;
-  const hasToken = accessToken && !accessToken.includes('tu_access_token');
-  const hasTerminal = process.env.MP_TERMINAL_ID && !process.env.MP_TERMINAL_ID.includes('tu_terminal_id');
+  const hasToken = (accessToken && !accessToken.includes('tu_access_token')) || isSandboxMode;
+  const hasTerminal = (process.env.MP_TERMINAL_ID && !process.env.MP_TERMINAL_ID.includes('tu_terminal_id')) || isSandboxMode;
 
   let terminals = [];
   let terminalError = null;
@@ -1959,6 +2030,11 @@ app.get('/admin', async (req, res) => {
           from { transform: translateY(100%); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
         }
+        @keyframes pulse {
+          0% { opacity: 0.6; }
+          50% { opacity: 1; }
+          100% { opacity: 0.6; }
+        }
       </style>
     </head>
     <body>
@@ -2020,6 +2096,76 @@ app.get('/admin', async (req, res) => {
               <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 1rem;">
                 * Nota: Cuando despliegues en <strong>Render</strong>, reemplaza la parte inicial de esta URL con el enlace que te asigne Render.
               </p>
+            </div>
+
+            <!-- CARD DE SIMULADOR SANDBOX (PRUEBAS) -->
+            <div class="card full-width" style="border-color: rgba(251, 191, 36, 0.2); background: rgba(251, 191, 36, 0.02);">
+              <h2>
+                <span class="status-indicator" id="sandboxBadge" style="background-color: #fbbf24; box-shadow: 0 0 10px #fbbf24;"></span>
+                Simulador de Entorno de Pruebas (Mercado Pago Sandbox)
+              </h2>
+              <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem;">
+                Habilita el simulador para probar los flujos de cobro, webhook e impresión sin necesidad de una terminal Point física vinculada, evitando el error <strong>409 Conflict</strong>.
+              </p>
+              
+              <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 1rem;">
+                <span style="font-weight: 600; color: #fff;">Estado del Simulador:</span>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                  <button id="btnToggleSandbox" class="btn" style="width: auto; margin-top: 0; padding: 0.5rem 1.25rem; font-size: 0.9rem; background: #fbbf24; color: #0b0f19; box-shadow: 0 0 10px rgba(251, 191, 36, 0.3);">
+                    Cargando...
+                  </button>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted);" id="sandboxStatusDesc">
+                  Detectando credenciales...
+                </div>
+              </div>
+
+              <!-- CONTROLES DEL SIMULADOR (Solo si Sandbox está activo) -->
+              <div id="sandboxControls" style="display: none; animation: fadeIn 0.3s ease-in-out;">
+                <div class="grid" style="grid-template-columns: 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                  <!-- Subcard 1: Flujo de cobro simulado -->
+                  <div style="background: rgba(255, 255, 255, 0.02); padding: 1.25rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                    <h3 style="font-size: 1.1rem; color: #fff; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">📟 Terminal Virtual</h3>
+                    <div id="simulatedOrderContainer">
+                      <p style="color: var(--text-muted); font-size: 0.9rem;">No hay cobros activos en curso en este momento. Envía un cobro usando la tarjeta de arriba o haz una simulación directa.</p>
+                    </div>
+                  </div>
+
+                  <!-- Subcard 2: Simulador de Webhook -->
+                  <div style="background: rgba(255, 255, 255, 0.02); padding: 1.25rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                    <h3 style="font-size: 1.1rem; color: #fff; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">🔔 Simular Webhook de Pago</h3>
+                    <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 0.75rem;">
+                      Dispara un webhook local de pago aprobado. Esto simula que Mercado Pago notifica un cobro exitoso, gatillando automáticamente la impresión del poema y la liquidación blockchain.
+                    </p>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                      <span style="font-weight: bold; color: var(--success-color);">$</span>
+                      <input type="number" id="webhookSimAmount" value="50.00" step="1.00" min="15.00" style="width: 100px; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(0,0,0,0.3); color: white; font-family: monospace;">
+                      <button id="btnSimulateWebhook" class="btn" style="flex: 1; margin-top: 0; padding: 0.5rem 1rem; font-size: 0.88rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                        Disparar Webhook de Pago
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Historial de Impresiones Simuladas -->
+                <div style="background: rgba(255, 255, 255, 0.01); padding: 1.5rem; border-radius: 15px; border: 1px solid rgba(255,255,255,0.04);">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h3 style="font-size: 1.2rem; color: #fff; display: flex; align-items: center; gap: 0.5rem;">📜 Historial de Tickets Impresos (Simulación)</h3>
+                    <button id="btnClearSimPrints" class="btn btn-secondary" style="width: auto; margin-top: 0; padding: 0.4rem 0.8rem; font-size: 0.8rem; border-color: rgba(248,113,113,0.2); color: var(--error-color);">
+                      Vaciar Historial
+                    </button>
+                  </div>
+                  <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 1rem;">
+                    Abajo puedes ver cómo se verían los tickets impresos físicamente por la Point Smart. Las etiquetas de la ticketera se renderizan simulando el papel térmico real.
+                  </p>
+                  
+                  <div id="simulatedPrintsHistory" style="display: flex; gap: 1.5rem; overflow-x: auto; padding: 0.5rem 0; min-height: 100px;">
+                    <div style="color: var(--text-muted); font-style: italic; width: 100%; text-align: center; padding: 1.5rem 0;">
+                      Aún no hay impresiones simuladas registradas. Realiza un cobro o prueba manual arriba.
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- CARD DE SIMULADOR DE COBRO -->
@@ -2540,6 +2686,242 @@ app.get('/admin', async (req, res) => {
           }, 4000);
         }
 
+        // --- Lógica del Simulador Sandbox (Mercado Pago) ---
+        let simulatedPrints = [];
+        
+        function formatReceiptHtml(content) {
+          if (content === 'Logo Base64') {
+            return '<div style="text-align: center; padding: 1rem 0;">' +
+              '<div style="font-weight: bold; font-family: monospace;">🖼️ LOGOTIPO DE EL PECADO TEATRO 🖼️</div>' +
+              '<div style="font-size: 0.75rem; color: var(--text-muted);">[Imagen Base64]</div>' +
+            '</div>';
+          }
+          
+          let html = content;
+          html = html.replace(/{br}/g, '<br>');
+          html = html.replace(/{center}/g, '<div style="text-align: center;">');
+          html = html.replace(/{\/center}/g, '</div>');
+          html = html.replace(/{b}/g, '<strong>');
+          html = html.replace(/{\/b}/g, '</strong>');
+          html = html.replace(/{w}/g, '<span style="font-size: 1.15rem; font-weight: 800; display: inline-block;">');
+          html = html.replace(/{\/w}/g, '</span>');
+          html = html.replace(/{s}/g, '<span style="font-size: 0.8rem; opacity: 0.8; display: inline-block;">');
+          html = html.replace(/{\/s}/g, '</span>');
+          
+          return '<div style="background: #ffffff; color: #111827; padding: 1rem; border-radius: 4px; font-family: monospace; font-size: 0.82rem; line-height: 1.3; box-shadow: inset 0 0 10px rgba(0,0,0,0.1); border-left: 2px dashed #d1d5db; border-right: 2px dashed #d1d5db; margin-top: 0.5rem; text-align: left; max-height: 250px; overflow-y: auto; width: 100%;">' +
+            html +
+          '</div>';
+        }
+
+        async function loadSandboxStatus() {
+          try {
+            const response = await fetch('/api/sandbox/status');
+            if (!response.ok) throw new Error('Error al cargar estado del Sandbox');
+            
+            const data = await response.json();
+            const isSandbox = data.isSandboxMode;
+            
+            // Actualizar insignias de modo
+            const badge = document.getElementById('sandboxBadge');
+            const toggleBtn = document.getElementById('btnToggleSandbox');
+            const statusDesc = document.getElementById('sandboxStatusDesc');
+            const controlsDiv = document.getElementById('sandboxControls');
+            
+            // Habilitar los botones de prueba y cobro incluso si no hay tokens/terminal configurados reales
+            document.getElementById('btnTest').disabled = false;
+            document.getElementById('btnTestLogo').disabled = false;
+            
+            if (isSandbox) {
+              badge.className = 'status-indicator status-ok';
+              toggleBtn.textContent = '❌ Desactivar Modo Sandbox';
+              toggleBtn.style.background = '#f87171';
+              toggleBtn.style.color = 'white';
+              toggleBtn.style.boxShadow = '0 0 10px rgba(248, 113, 113, 0.3)';
+              statusDesc.innerHTML = '<strong>Modo Sandbox ACTIVO</strong>. Las llamadas a las terminales y cobros reales están siendo interceptadas y simuladas localmente.';
+              controlsDiv.style.display = 'block';
+            } else {
+              badge.className = 'status-indicator status-warning';
+              toggleBtn.textContent = '🔌 Activar Modo Sandbox';
+              toggleBtn.style.background = '#fbbf24';
+              toggleBtn.style.color = '#0b0f19';
+              toggleBtn.style.boxShadow = '0 0 10px rgba(251, 191, 36, 0.3)';
+              statusDesc.innerHTML = 'Modo Producción Activo. El sistema intentará comunicarse con terminales Point reales de Mercado Pago.';
+              controlsDiv.style.display = 'none';
+            }
+            
+            // Rellenar orden activa
+            const simulatedOrderContainer = document.getElementById('simulatedOrderContainer');
+            if (data.activeOrder) {
+              const order = data.activeOrder;
+              simulatedOrderContainer.innerHTML = \`
+                <div style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251,191,36,0.2); border-radius: 8px; padding: 1rem;">
+                  <div style="display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 0.5rem; align-items: center;">
+                    <span>Cobro en Curso: <strong style="color: #fbbf24; font-family: monospace;">\${order.id}</strong></span>
+                    <span style="color: #fbbf24; font-weight: bold; animation: pulse 1.5s infinite;">● \${order.status.toUpperCase()}</span>
+                  </div>
+                  <div style="font-size: 1.4rem; font-weight: 800; color: #fff; margin-bottom: 0.75rem;">
+                    Monto: \$\${order.amount.toFixed(2)}
+                  </div>
+                  <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 1rem;">
+                    \${order.status === 'created' ? 'Inicializando orden de cobro...' : 'Esperando interacción del cliente. Pasa la tarjeta para completar el flujo:'}
+                  </p>
+                  <div style="display: flex; gap: 0.5rem;">
+                    <button onclick="simulateSwipe()" class="btn" style="margin-top: 0; padding: 0.5rem 1rem; font-size: 0.85rem; background: #fbbf24; color: #0b0f19; flex: 1;">
+                      💳 Simular Pase de Tarjeta (Aprobar)
+                    </button>
+                    <button onclick="simulateCancelOrder()" class="btn btn-secondary" style="margin-top: 0; padding: 0.5rem; font-size: 0.85rem; color: var(--error-color); border-color: rgba(248,113,113,0.3); flex: 0.4;">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              \`;
+            } else {
+              simulatedOrderContainer.innerHTML = \`
+                <p style="color: var(--text-muted); font-size: 0.9rem;">
+                  No hay cobros activos en curso en este momento. Envía un cobro usando la tarjeta <strong>"Iniciar Cobro en Terminal"</strong> de arriba para iniciar el flujo.
+                </p>
+              \`;
+            }
+            
+            // Rellenar historial de impresiones simuladas
+            const printsHistory = document.getElementById('simulatedPrintsHistory');
+            if (data.simulatedPrints.length === 0) {
+              printsHistory.innerHTML = \`<div style="color: var(--text-muted); font-style: italic; width: 100%; text-align: center; padding: 1.5rem 0;">Aún no hay impresiones simuladas registradas. Realiza un cobro o prueba manual arriba.</div>\`;
+            } else {
+              printsHistory.innerHTML = data.simulatedPrints.map(print => {
+                const typeLabel = print.type === 'logo' ? '🖼️ Logotipo' : '📜 Poema';
+                const time = new Date(print.timestamp).toLocaleTimeString('es-AR');
+                return \`
+                  <div style="flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; border: 1px solid var(--border-color); padding: 0.75rem; border-radius: 8px; background: rgba(255,255,255,0.02); min-width: 280px; max-width: 280px;">
+                    <div style="font-size: 0.8rem; font-weight: bold; width: 100%; display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.25rem; margin-bottom: 0.5rem; align-items: center;">
+                      <span style="color: var(--primary-color);">\${typeLabel}</span>
+                      <span style="color: var(--text-muted);">\${time}</span>
+                    </div>
+                    \${formatReceiptHtml(print.formattedContent)}
+                  </div>
+                \`;
+              }).join('');
+            }
+            
+          } catch (err) {
+            console.error('Error al cargar estado de Sandbox:', err);
+          }
+        }
+        
+        // Manejar botón de alternar Sandbox
+        const btnToggleSandbox = document.getElementById('btnToggleSandbox');
+        if (btnToggleSandbox) {
+          btnToggleSandbox.addEventListener('click', async () => {
+            const isCurrentlySandbox = btnToggleSandbox.textContent.includes('Desactivar');
+            const targetState = !isCurrentlySandbox;
+            
+            btnToggleSandbox.disabled = true;
+            
+            try {
+              const response = await fetch('/api/sandbox/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: targetState })
+              });
+              
+              if (response.ok) {
+                showToast(\`Modo Sandbox \${targetState ? 'activado' : 'desactivado'} con éxito.\`);
+                loadSandboxStatus();
+              } else {
+                showToast('Error al cambiar el modo Sandbox');
+              }
+            } catch (err) {
+              showToast('Error de red al cambiar el modo Sandbox');
+            } finally {
+              btnToggleSandbox.disabled = false;
+            }
+          });
+        }
+        
+        // Simular pase de tarjeta
+        async function simulateSwipe() {
+          try {
+            const response = await fetch('/api/sandbox/simulate-swipe', { method: 'POST' });
+            if (response.ok) {
+              showToast('¡Pago aprobado en simulador! Procesando impresión del poema y royalties...');
+              loadSandboxStatus();
+            } else {
+              const data = await response.json();
+              showToast('Error: ' + data.error);
+            }
+          } catch (e) {
+            showToast('Error al simular el pase de tarjeta.');
+          }
+        }
+        
+        // Simular cancelación
+        async function simulateCancelOrder() {
+          try {
+            const response = await fetch('/api/sandbox/simulate-cancel-order', { method: 'POST' });
+            if (response.ok) {
+              showToast('Cobro simulado cancelado con éxito.');
+              loadSandboxStatus();
+            } else {
+              const data = await response.json();
+              showToast('Error: ' + data.error);
+            }
+          } catch (e) {
+            showToast('Error al simular la cancelación de la orden.');
+          }
+        }
+        
+        // Simular Webhook
+        const btnSimulateWebhook = document.getElementById('btnSimulateWebhook');
+        if (btnSimulateWebhook) {
+          btnSimulateWebhook.addEventListener('click', async () => {
+            const amountInput = document.getElementById('webhookSimAmount');
+            const amount = parseFloat(amountInput.value) || 15.00;
+            
+            btnSimulateWebhook.disabled = true;
+            btnSimulateWebhook.textContent = 'Enviando webhook...';
+            
+            try {
+              const response = await fetch('/api/sandbox/simulate-webhook', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount })
+              });
+              
+              if (response.ok) {
+                showToast(\`Webhook simulado para pago de \$\${amount} enviado con éxito.\`);
+                loadSandboxStatus();
+              } else {
+                showToast('Error al enviar webhook simulado.');
+              }
+            } catch (e) {
+              showToast('Error de red al enviar webhook simulado.');
+            } finally {
+              btnSimulateWebhook.disabled = false;
+              btnSimulateWebhook.textContent = 'Disparar Webhook de Pago';
+            }
+          });
+        }
+        
+        // Vaciar historial de impresiones simuladas
+        const btnClearSimPrints = document.getElementById('btnClearSimPrints');
+        if (btnClearSimPrints) {
+          btnClearSimPrints.addEventListener('click', async () => {
+            try {
+              const response = await fetch('/api/sandbox/clear-prints', { method: 'POST' });
+              if (response.ok) {
+                showToast('Historial de impresiones vaciado.');
+                loadSandboxStatus();
+              }
+            } catch (e) {
+              showToast('Error al vaciar historial de impresiones.');
+            }
+          });
+        }
+        
+        // Iniciar polling del estado de Sandbox cada 2 segundos
+        setInterval(loadSandboxStatus, 2000);
+        loadSandboxStatus();
+
         // Cargar datos por defecto al iniciar
         loadAuthorPortalData();
       </script>
@@ -3040,11 +3422,13 @@ app.post('/create-order', async (req, res) => {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   const terminalId = process.env.MP_TERMINAL_ID;
 
-  if (!accessToken || accessToken.includes('tu_access_token')) {
-    return res.status(400).json({ error: 'Mercado Pago Access Token no configurado en el archivo .env' });
-  }
-  if (!terminalId || terminalId.includes('tu_terminal_id')) {
-    return res.status(400).json({ error: 'Mercado Pago Terminal ID no configurado en el archivo .env' });
+  if (!isSandboxMode) {
+    if (!accessToken || accessToken.includes('tu_access_token')) {
+      return res.status(400).json({ error: 'Mercado Pago Access Token no configurado en el archivo .env' });
+    }
+    if (!terminalId || terminalId.includes('tu_terminal_id')) {
+      return res.status(400).json({ error: 'Mercado Pago Terminal ID no configurado en el archivo .env' });
+    }
   }
 
   const numericAmount = parseFloat(amount);
@@ -3054,6 +3438,51 @@ app.post('/create-order', async (req, res) => {
 
   const idempotencyKey = crypto.randomUUID();
   const externalReference = `payment_${Date.now()}`;
+
+  if (isSandboxMode) {
+    const orderId = `sim_order_${Date.now()}`;
+    const simulatedOrder = {
+      id: orderId,
+      status: 'created',
+      amount: numericAmount,
+      payments: [],
+      external_reference: externalReference,
+      config: { point: { terminal_id: terminalId || 'TEST_TERMINAL' } }
+    };
+    
+    simulatedOrders[orderId] = simulatedOrder;
+    console.log(`[Cobro] [SIMULACIÓN] Creada orden de cobro simulada por $${numericAmount} con ID: ${orderId}`);
+    
+    // Auto-avanzar a 'at_terminal' después de 1.5 segundos
+    setTimeout(() => {
+      if (simulatedOrders[orderId] && simulatedOrders[orderId].status === 'created') {
+        simulatedOrders[orderId].status = 'at_terminal';
+        console.log(`[Cobro] [SIMULACIÓN] Orden ${orderId} avanzó a estado: at_terminal`);
+      }
+    }, 1500);
+
+    // Auto-procesar / auto-aprobar después de 20 segundos por si el usuario no interactúa
+    setTimeout(() => {
+      if (simulatedOrders[orderId] && simulatedOrders[orderId].status === 'at_terminal') {
+        simulatedOrders[orderId].status = 'processed';
+        simulatedOrders[orderId].payments = [{
+          id: `pay_sim_${Date.now()}`,
+          status: 'approved',
+          transaction_amount: numericAmount
+        }];
+        simulatedPayments[simulatedOrders[orderId].payments[0].id] = simulatedOrders[orderId].payments[0];
+        console.log(`[Cobro] [SIMULACIÓN] Orden ${orderId} auto-aprobada por timeout.`);
+      }
+    }, 20000);
+
+    startOrderPolling(orderId);
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Orden de cobro simulada iniciada', 
+      isSimulated: true,
+      data: simulatedOrder 
+    });
+  }
 
   const payload = {
     external_reference: externalReference,
@@ -3107,12 +3536,24 @@ app.post('/change-terminal-mode', async (req, res) => {
   const { terminalId, mode } = req.body;
   const accessToken = process.env.MP_ACCESS_TOKEN;
 
-  if (!accessToken || accessToken.includes('tu_access_token')) {
-    return res.status(400).json({ error: 'Mercado Pago Access Token no configurado en el archivo .env' });
+  if (!isSandboxMode) {
+    if (!accessToken || accessToken.includes('tu_access_token')) {
+      return res.status(400).json({ error: 'Mercado Pago Access Token no configurado en el archivo .env' });
+    }
   }
 
   if (!terminalId || !mode) {
     return res.status(400).json({ error: 'Faltan parámetros obligatorios: terminalId o mode' });
+  }
+
+  if (isSandboxMode) {
+    console.log(`[Configuración] [SIMULACIÓN] Configurando terminal ${terminalId} en modo: ${mode}...`);
+    return res.status(200).json({ 
+      success: true, 
+      message: `Modo de operación configurado a ${mode} (Simulación)`, 
+      isSimulated: true,
+      data: { id: terminalId, operating_mode: mode }
+    });
   }
 
   try {
@@ -3682,16 +4123,26 @@ async function startOrderPolling(orderId, maxAttempts = 100, intervalMs = 3000) 
     }
     
     try {
-      const response = await axios.get(
-        `https://api.mercadopago.com/v1/orders/${orderId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
+      let orderData;
+      if (orderId.toString().startsWith('sim_order_') || isSandboxMode) {
+        orderData = simulatedOrders[orderId];
+        if (!orderData) {
+          console.warn(`[Polling] Orden simulada ${orderId} no encontrada en memoria. Deteniendo polling.`);
+          clearInterval(timer);
+          return;
         }
-      );
+      } else {
+        const response = await axios.get(
+          `https://api.mercadopago.com/v1/orders/${orderId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          }
+        );
+        orderData = response.data;
+      }
       
-      const orderData = response.data;
       const status = orderData.status;
       
       console.log(`[Polling] Orden ${orderId} (Intento ${attempts}/${maxAttempts}) -> Estado actual: ${status}`);
@@ -3756,16 +4207,29 @@ app.post('/webhook', async (req, res) => {
       console.log(`[Webhook] Consultando detalles del pago ${resourceId}...`);
       
       try {
-        const paymentResponse = await axios.get(
-          `https://api.mercadopago.com/v1/payments/${resourceId}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
+        let paymentData;
+        if (resourceId.toString().startsWith('pay_sim_') || isSandboxMode) {
+          paymentData = simulatedPayments[resourceId];
+          if (!paymentData) {
+            paymentData = {
+              id: resourceId,
+              status: 'approved',
+              status_detail: 'accredited',
+              transaction_amount: 15.00
+            };
           }
-        );
+        } else {
+          const paymentResponse = await axios.get(
+            `https://api.mercadopago.com/v1/payments/${resourceId}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            }
+          );
+          paymentData = paymentResponse.data;
+        }
 
-        const paymentData = paymentResponse.data;
         const status = paymentData.status;
         const statusDetail = paymentData.status_detail;
         const amount = paymentData.transaction_amount;
@@ -3791,16 +4255,26 @@ app.post('/webhook', async (req, res) => {
       console.log(`[Webhook] Consultando detalles de la orden comercial ${resourceId}...`);
       
       try {
-        const orderResponse = await axios.get(
-          `https://api.mercadopago.com/merchant_orders/${resourceId}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
+        let orderData;
+        if (resourceId.toString().startsWith('sim_order_') || isSandboxMode) {
+          orderData = simulatedOrders[resourceId];
+          if (!orderData) {
+            orderData = {
+              payments: [{ status: 'approved', transaction_amount: 15.00, id: `pay_sim_${Date.now()}` }]
+            };
           }
-        );
+        } else {
+          const orderResponse = await axios.get(
+            `https://api.mercadopago.com/merchant_orders/${resourceId}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            }
+          );
+          orderData = orderResponse.data;
+        }
 
-        const orderData = orderResponse.data;
         const payments = orderData.payments || [];
         console.log(`[Webhook] Orden comercial ${resourceId} tiene ${payments.length} pagos registrados.`);
 
@@ -3825,6 +4299,139 @@ app.post('/webhook', async (req, res) => {
     console.error('[Webhook] Error crítico procesando webhook:', error.message);
     // Respondemos con 200 de todas formas para evitar reintentos infinitos de MP
     return res.status(200).send('Webhook manejado con error interno');
+  }
+});
+
+// --- Endpoints de Simulación Sandbox ---
+
+// Obtener estado actual del simulador
+app.get('/api/sandbox/status', (req, res) => {
+  // Buscar si hay alguna orden simulada activa
+  const activeOrder = Object.values(simulatedOrders).find(
+    o => o.status === 'created' || o.status === 'at_terminal'
+  );
+  
+  res.json({
+    isSandboxMode,
+    activeOrder: activeOrder || null,
+    simulatedPrints: simulatedPrints
+  });
+});
+
+// Cambiar modo sandbox
+app.post('/api/sandbox/toggle', (req, res) => {
+  const { enabled } = req.body;
+  isSandboxMode = enabled === true;
+  saveSettings();
+  console.log(`[Config] Modo Sandbox cambiado a: ${isSandboxMode}`);
+  res.json({ success: true, isSandboxMode });
+});
+
+// Limpiar historial de impresiones simuladas
+app.post('/api/sandbox/clear-prints', (req, res) => {
+  simulatedPrints = [];
+  res.json({ success: true, message: 'Historial de impresiones simuladas vaciado' });
+});
+
+// Simular pase de tarjeta (Aprobar pago de orden activa)
+app.post('/api/sandbox/simulate-swipe', (req, res) => {
+  const activeOrder = Object.values(simulatedOrders).find(
+    o => o.status === 'created' || o.status === 'at_terminal'
+  );
+
+  if (!activeOrder) {
+    return res.status(400).json({ error: 'No hay ninguna orden de cobro activa en la terminal para procesar.' });
+  }
+
+  activeOrder.status = 'processed';
+  activeOrder.payments = [{
+    id: `pay_sim_${Date.now()}`,
+    status: 'approved',
+    transaction_amount: activeOrder.amount
+  }];
+  
+  // Guardar en pagos simulados
+  simulatedPayments[activeOrder.payments[0].id] = activeOrder.payments[0];
+
+  console.log(`[Simulador] Pago aprobado para orden simulada ${activeOrder.id} ($${activeOrder.amount})`);
+  res.json({ success: true, order: activeOrder });
+});
+
+// Simular cancelación de orden activa
+app.post('/api/sandbox/simulate-cancel-order', (req, res) => {
+  const activeOrder = Object.values(simulatedOrders).find(
+    o => o.status === 'created' || o.status === 'at_terminal'
+  );
+
+  if (!activeOrder) {
+    return res.status(400).json({ error: 'No hay ninguna orden de cobro activa en la terminal para cancelar.' });
+  }
+
+  activeOrder.status = 'cancelled';
+  console.log(`[Simulador] Orden simulada ${activeOrder.id} cancelada manualmente.`);
+  res.json({ success: true, order: activeOrder });
+});
+
+// Simular webhook de pago aprobado
+app.post('/api/sandbox/simulate-webhook', async (req, res) => {
+  const { amount } = req.body;
+  const numericAmount = parseFloat(amount) || 15.00;
+  const paymentId = `pay_sim_wh_${Date.now()}`;
+  
+  // Registrar el pago simulado
+  simulatedPayments[paymentId] = {
+    id: paymentId,
+    status: 'approved',
+    status_detail: 'accredited',
+    transaction_amount: numericAmount
+  };
+
+  console.log(`[Simulador Webhook] Registrado pago simulado ${paymentId} por $${numericAmount}. Enviando webhook...`);
+
+  // Crear payload del webhook
+  const webhookPayload = {
+    action: "payment.created",
+    api_version: "v1",
+    data: {
+      id: paymentId
+    },
+    date_created: new Date().toISOString(),
+    id: `event_sim_${Date.now()}`,
+    live_mode: false,
+    type: "payment",
+    user_id: "test_user_id"
+  };
+
+  try {
+    const port = process.env.PORT || 3000;
+    // Llamar al endpoint local
+    const response = await axios.post(
+      `http://localhost:${port}/webhook`,
+      webhookPayload,
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Simulación de webhook enviada y procesada', 
+      paymentId, 
+      result: response.data 
+    });
+  } catch (error) {
+    console.error('[Simulador Webhook] Falló el POST HTTP local, ejecutando lógica de procesamiento directa.');
+    try {
+      await processApprovedPayment(paymentId, numericAmount);
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Simulación de webhook ejecutada vía fallback local', 
+        paymentId 
+      });
+    } catch (fallbackError) {
+      return res.status(500).json({ error: fallbackError.message });
+    }
   }
 });
 
