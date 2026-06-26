@@ -7,6 +7,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { getRandomPoem, parsePoemMetadata } from './poems.js';
+import { transferRFCTokens, getWalletDetails } from './blockchain.js';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -347,13 +348,13 @@ app.get('/', async (req, res) => {
         }
 
         .container {
-          max-width: 1000px;
+          max-width: 1050px;
           margin: 0 auto;
         }
 
         header {
           text-align: center;
-          margin-bottom: 3rem;
+          margin-bottom: 2.5rem;
         }
 
         h1 {
@@ -371,6 +372,53 @@ app.get('/', async (req, res) => {
           font-size: 1.1rem;
         }
 
+        /* Tabs styling */
+        .tabs {
+          display: flex;
+          justify-content: center;
+          gap: 1rem;
+          margin-bottom: 2.5rem;
+        }
+
+        .tab-btn {
+          padding: 0.8rem 1.8rem;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--border-color);
+          border-radius: 12px;
+          color: var(--text-muted);
+          font-family: 'Outfit', sans-serif;
+          font-weight: 600;
+          font-size: 0.95rem;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .tab-btn:hover {
+          background: rgba(192, 132, 252, 0.08);
+          color: var(--text-color);
+        }
+
+        .tab-btn.active {
+          background: var(--primary-color);
+          border-color: var(--primary-color);
+          color: #0b0f19;
+          box-shadow: 0 0 15px rgba(192, 132, 252, 0.4);
+        }
+
+        .tab-content {
+          display: none;
+          animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .tab-content.active {
+          display: block;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(5px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
         .grid {
           display: grid;
           grid-template-columns: 1fr;
@@ -383,6 +431,18 @@ app.get('/', async (req, res) => {
           }
           .full-width {
             grid-column: span 2;
+          }
+        }
+
+        .split-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 2rem;
+        }
+
+        @media (min-width: 900px) {
+          .split-grid {
+            grid-template-columns: 1.1fr 0.9fr;
           }
         }
 
@@ -524,6 +584,92 @@ app.get('/', async (req, res) => {
           animation: slideIn 0.3s ease-out;
         }
 
+        /* Visor del contrato legal */
+        .contract-viewer {
+          background: rgba(0, 0, 0, 0.3);
+          border: 1px solid var(--border-color);
+          border-radius: 12px;
+          padding: 1.25rem;
+          max-height: 280px;
+          overflow-y: auto;
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.9rem;
+          color: var(--text-muted);
+          margin-bottom: 1.5rem;
+          line-height: 1.5;
+        }
+
+        .contract-viewer h3 {
+          color: #fff;
+          font-family: 'Playfair Display', serif;
+          margin-bottom: 0.8rem;
+          text-align: center;
+          font-size: 1.1rem;
+        }
+
+        .form-group {
+          margin-bottom: 1.2rem;
+        }
+
+        .form-group label {
+          display: block;
+          font-size: 0.9rem;
+          color: var(--text-muted);
+          margin-bottom: 0.4rem;
+          font-weight: 600;
+        }
+
+        .form-control {
+          width: 100%;
+          padding: 0.75rem 0.85rem;
+          border-radius: 10px;
+          border: 1px solid var(--border-color);
+          background: rgba(0, 0, 0, 0.45);
+          color: white;
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.95rem;
+          outline: none;
+          transition: border-color 0.2s;
+        }
+
+        .form-control:focus {
+          border-color: var(--primary-color);
+        }
+
+        .checkbox-group {
+          display: flex;
+          gap: 0.5rem;
+          align-items: flex-start;
+          margin: 1.2rem 0;
+          font-size: 0.85rem;
+          color: var(--text-muted);
+          cursor: pointer;
+        }
+
+        .checkbox-group input {
+          margin-top: 0.2rem;
+        }
+
+        .badge-simulated {
+          background: rgba(251, 191, 36, 0.12);
+          color: #fbbf24;
+          border: 1px solid rgba(251, 191, 36, 0.2);
+          padding: 0.15rem 0.45rem;
+          border-radius: 4px;
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
+
+        .badge-real {
+          background: rgba(52, 211, 153, 0.12);
+          color: var(--success-color);
+          border: 1px solid rgba(52, 211, 153, 0.2);
+          padding: 0.15rem 0.45rem;
+          border-radius: 4px;
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
+
         @keyframes slideIn {
           from { transform: translateY(100%); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
@@ -537,114 +683,283 @@ app.get('/', async (req, res) => {
           <p class="subtitle">Integración de Mercado Pago Point Smart & Impresión de Poemas</p>
         </header>
 
-        <div class="grid">
-          <!-- CARD DE ESTADO -->
-          <div class="card">
-            <h2>
-              <span class="status-indicator ${hasToken && hasTerminal ? 'status-ok' : 'status-warning'}"></span>
-              Estado del Servidor
-            </h2>
-            <div class="info-item">
-              <span class="info-label">Servidor Online</span>
-              <span class="info-value text-success">SÍ</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Poemas cargados</span>
-              <span class="info-value">${poemsCount} poemas</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Token Configurado</span>
-              <span class="info-value">${hasToken ? 'ACTIVO (✓)' : 'FALTA (✗)'}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Terminal ID Configurado</span>
-              <span class="info-value">${hasTerminal ? 'CONFIGURADO (✓)' : 'FALTA (✗)'}</span>
-            </div>
+        <!-- TABS DE NAVEGACIÓN -->
+        <div class="tabs">
+          <button id="tabBtnSmart" class="tab-btn active" onclick="switchTab('tab-smart')">📟 Point Smart Dashboard</button>
+          <button id="tabBtnAutores" class="tab-btn" onclick="switchTab('tab-autores')">✍️ Portal de Autores y Regalías RFC</button>
+        </div>
 
-            <button id="btnTest" class="btn" ${!hasToken || !hasTerminal ? 'disabled' : ''}>
-              ✨ Imprimir Poema de Prueba
-            </button>
-            <button id="btnTestLogo" class="btn btn-secondary" ${!hasToken || !hasTerminal ? 'disabled' : ''} style="margin-top: 0.5rem; border-color: rgba(192, 132, 252, 0.3);">
-              🖼️ Imprimir Logo de Prueba
-            </button>
-          </div>
+        <!-- CONTENIDO TAB 1: POINT SMART DASHBOARD -->
+        <div id="tab-smart" class="tab-content active">
+          <div class="grid">
+            <!-- CARD DE ESTADO -->
+            <div class="card">
+              <h2>
+                <span class="status-indicator ${hasToken && hasTerminal ? 'status-ok' : 'status-warning'}"></span>
+                Estado del Servidor
+              </h2>
+              <div class="info-item">
+                <span class="info-label">Servidor Online</span>
+                <span class="info-value text-success">SÍ</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Poemas cargados</span>
+                <span class="info-value">${poemsCount} poemas</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Token Configurado</span>
+                <span class="info-value">${hasToken ? 'ACTIVO (✓)' : 'FALTA (✗)'}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Terminal ID Configurado</span>
+                <span class="info-value">${hasTerminal ? 'CONFIGURADO (✓)' : 'FALTA (✗)'}</span>
+              </div>
 
-          <!-- CARD DE CONFIGURACIÓN WEBHOOK -->
-          <div class="card">
-            <h2>⚙ Configuración de Webhook</h2>
-            <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">
-              Mercado Pago enviará señales automáticas a este servidor cuando tus clientes realicen un pago. Configura este endpoint en tu panel de desarrollador:
-            </p>
-            <span class="info-label">Dirección Webhook (URL pública):</span>
-            <div class="code-block" id="webhookUrl">Cargando...</div>
-            
-            <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 1rem;">
-              * Nota: Cuando despliegues en <strong>Render</strong>, reemplaza la parte inicial de esta URL con el enlace que te asigne Render.
-            </p>
-          </div>
-
-          <!-- CARD DE SIMULADOR DE COBRO -->
-          <div class="card" ${!hasToken || !hasTerminal ? 'style="display:none;"' : ''}>
-            <h2>💸 Iniciar Cobro en Terminal</h2>
-            <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">
-              Envía un monto a cobrar a tu Point Smart. La terminal saldrá del modo espera y solicitará la tarjeta.
-            </p>
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-              <span style="font-size: 1.2rem; font-weight: bold; color: var(--primary-color);">$</span>
-              <input type="number" id="chargeAmount" value="15.00" step="0.01" min="15.00" style="flex: 1; padding: 0.8rem; border-radius: 10px; border: 1px solid var(--border-color); background: rgba(0, 0, 0, 0.4); color: white; font-family: Outfit, sans-serif; font-size: 1rem;">
-            </div>
-            <button id="btnCharge" class="btn" style="background: linear-gradient(135deg, #34d399 0%, #10b981 100%);">
-              💳 Enviar Cobro a Point
-            </button>
-          </div>
-
-          <!-- CARD DE TERMINALES -->
-          <div class="card full-width">
-            <h2>POS/Terminales Asociadas</h2>
-            ${terminalError ? `
-              <p style="color: var(--error-color)">Error al consultar terminales: ${terminalError}</p>
-            ` : ''}
-
-            ${terminals.length === 0 && !terminalError ? `
-              <p style="color: var(--text-muted)">
-                ${hasToken ? 'No se encontraron terminales Point Smart vinculadas a esta cuenta.' : 'Configura tu Access Token en el archivo .env para listar tus terminales.'}
-              </p>
-            ` : ''}
-
-            ${terminalsHtml}
-          </div>
-
-          <!-- CARD DE ESTADÍSTICAS -->
-          <div class="card full-width">
-            <h2>📊 Informe de Reproducción y Derechos de Autor</h2>
-            <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem;">
-              Control de impresiones para liquidación de regalías y cumplimiento de la Ley de Propiedad Intelectual N° 11.723 en Argentina.
-            </p>
-            <div style="overflow-x: auto;">
-              <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
-                <thead>
-                  <tr style="border-bottom: 2px solid var(--border-color); color: var(--primary-color);">
-                    <th style="padding: 0.8rem;">Poema</th>
-                    <th style="padding: 0.8rem;">Autor</th>
-                    <th style="padding: 0.8rem;">Estado Legal</th>
-                    <th style="padding: 0.8rem; text-align: right;">Impresiones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${statsHtml}
-                </tbody>
-              </table>
-            </div>
-            <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-              <span style="font-size: 0.85rem; color: var(--text-muted);">
-                * Nota: Según la Ley 11.723, la reproducción de poemas de autores vivos (como Goyo.art3) requiere autorización expresa y puede estar sujeta al pago de aranceles.
-              </span>
-              <button id="btnResetStats" class="btn btn-secondary" style="width: auto; margin-top: 0; padding: 0.5rem 1rem; font-size: 0.85rem; border-color: rgba(248, 113, 113, 0.3); color: var(--error-color);">
-                🗑️ Reiniciar Contadores
+              <button id="btnTest" class="btn" ${!hasToken || !hasTerminal ? 'disabled' : ''}>
+                ✨ Imprimir Poema de Prueba
               </button>
+              <button id="btnTestLogo" class="btn btn-secondary" ${!hasToken || !hasTerminal ? 'disabled' : ''} style="margin-top: 0.5rem; border-color: rgba(192, 132, 252, 0.3);">
+                🖼️ Imprimir Logo de Prueba
+              </button>
+            </div>
+
+            <!-- CARD DE CONFIGURACIÓN WEBHOOK -->
+            <div class="card">
+              <h2>⚙ Configuración de Webhook</h2>
+              <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">
+                Mercado Pago enviará señales automáticas a este servidor cuando tus clientes realicen un pago. Configura este endpoint en tu panel de desarrollador:
+              </p>
+              <span class="info-label">Dirección Webhook (URL pública):</span>
+              <div class="code-block" id="webhookUrl">Cargando...</div>
+              
+              <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 1rem;">
+                * Nota: Cuando despliegues en <strong>Render</strong>, reemplaza la parte inicial de esta URL con el enlace que te asigne Render.
+              </p>
+            </div>
+
+            <!-- CARD DE SIMULADOR DE COBRO -->
+            <div class="card" ${!hasToken || !hasTerminal ? 'style="display:none;"' : ''}>
+              <h2>💸 Iniciar Cobro en Terminal</h2>
+              <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">
+                Envía un monto a cobrar a tu Point Smart. La terminal saldrá del modo espera y solicitará la tarjeta.
+              </p>
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <span style="font-size: 1.2rem; font-weight: bold; color: var(--primary-color);">$</span>
+                <input type="number" id="chargeAmount" value="15.00" step="0.01" min="15.00" style="flex: 1; padding: 0.8rem; border-radius: 10px; border: 1px solid var(--border-color); background: rgba(0, 0, 0, 0.4); color: white; font-family: Outfit, sans-serif; font-size: 1rem;">
+              </div>
+              <button id="btnCharge" class="btn" style="background: linear-gradient(135deg, #34d399 0%, #10b981 100%);">
+                💳 Enviar Cobro a Point
+              </button>
+            </div>
+
+            <!-- CARD DE TERMINALES -->
+            <div class="card full-width">
+              <h2>POS/Terminales Asociadas</h2>
+              ${terminalError ? `
+                <p style="color: var(--error-color)">Error al consultar terminales: ${terminalError}</p>
+              ` : ''}
+
+              ${terminals.length === 0 && !terminalError ? `
+                <p style="color: var(--text-muted)">
+                  ${hasToken ? 'No se encontraron terminales Point Smart vinculadas a esta cuenta.' : 'Configura tu Access Token en el archivo .env para listar tus terminales.'}
+                </p>
+              ` : ''}
+
+              ${terminalsHtml}
+            </div>
+
+            <!-- CARD DE ESTADÍSTICAS -->
+            <div class="card full-width">
+              <h2>📊 Informe de Reproducción y Derechos de Autor</h2>
+              <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem;">
+                Control de impresiones para liquidación de regalías y cumplimiento de la Ley de Propiedad Intelectual N° 11.723 en Argentina.
+              </p>
+              <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+                  <thead>
+                    <tr style="border-bottom: 2px solid var(--border-color); color: var(--primary-color);">
+                      <th style="padding: 0.8rem;">Poema</th>
+                      <th style="padding: 0.8rem;">Autor</th>
+                      <th style="padding: 0.8rem;">Estado Legal</th>
+                      <th style="padding: 0.8rem; text-align: right;">Impresiones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${statsHtml}
+                  </tbody>
+                </table>
+              </div>
+              <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <span style="font-size: 0.85rem; color: var(--text-muted);">
+                  * Nota: Según la Ley 11.723, la reproducción de poemas de autores vivos (como Goyo.art3) requiere autorización expresa y puede estar sujeta al pago de aranceles.
+                </span>
+                <button id="btnResetStats" class="btn btn-secondary" style="width: auto; margin-top: 0; padding: 0.5rem 1rem; font-size: 0.85rem; border-color: rgba(248, 113, 113, 0.3); color: var(--error-color);">
+                  🗑️ Reiniciar Contadores
+                </button>
+              </div>
             </div>
           </div>
         </div>
+
+        <!-- CONTENIDO TAB 2: PORTAL DE AUTORES Y BLOCKCHAIN -->
+        <div id="tab-autores" class="tab-content">
+          <div class="grid">
+            
+            <!-- TARJETA SUPERIOR SPLIT: CONTRATO DIGITAL & REGISTRO -->
+            <div class="card full-width">
+              <h2>🖋️ Licencia Digital de Obra Poética y Registro de Autores</h2>
+              <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem;">
+                Acepta los términos del contrato de forma digital para registrar tu firma de autor, subir tus poemas y definir tu tarifa de regalías en tokens RFC.
+              </p>
+              
+              <div class="split-grid">
+                <!-- Visor del contrato digital -->
+                <div>
+                  <div class="contract-viewer">
+                    <h3>📄 CONTRATO DE LICENCIA DE USO DE OBRA POÉTICA</h3>
+                    <p style="margin-bottom: 0.8rem;"><strong>Entre:</strong> El autor firmante (en adelante, "EL AUTOR") y <strong>El Pecado Teatro</strong> (en adelante, "EL EDITOR").</p>
+                    <p style="margin-bottom: 0.8rem;"><strong>1. Objeto:</strong> EL AUTOR otorga a EL EDITOR una licencia no exclusiva para reproducir sus obras poéticas en tickets de compra emitidos por comercios mediante sistemas digitales.</p>
+                    <p style="margin-bottom: 0.8rem;"><strong>2. Alcance:</strong> La reproducción será parcial o completa del poema en formato impreso en tickets, distribuida de manera automática y aleatoria.</p>
+                    <p style="margin-bottom: 0.8rem;"><strong>3. Remuneración (Tokens RFC):</strong> EL EDITOR abonará a EL AUTOR el precio por uso acordado en la moneda digital <strong>Reward Faucet Coin (RFC)</strong> de forma automatizada por cada impresión confirmada.</p>
+                    <p style="margin-bottom: 0.8rem;"><strong>4. Derechos:</strong> EL AUTOR conserva todos los derechos sobre su obra. La presente licencia no implica cesión de propiedad intelectual alguna y es revocable.</p>
+                    <p style="margin-bottom: 0.8rem; color: var(--error-color); font-weight: 600;"><strong>5. Moderación Editorial:</strong> La editorial se reserva el derecho a publicar y eliminar del sistema cualquier poema que pudiera ser considerado apología de prácticas ilegales o que vulneren derechos particulares y de colectivos.</p>
+                    <p style="margin-bottom: 0.8rem;"><strong>6. Jurisdicción:</strong> Las partes se someten a las leyes de la República Argentina. Se requiere identificación mediante CUIT/CUIL y residencia o nacionalidad argentina.</p>
+                  </div>
+                  
+                  <!-- Formulario de carga de poemas -->
+                  <div style="border-top: 1px solid var(--border-color); padding-top: 1.5rem;">
+                    <h3 style="margin-bottom: 0.8rem;">📝 Publicar Nueva Obra Poética</h3>
+                    <form id="formPoema">
+                      <div class="form-group">
+                        <label for="poemAuthorSelect">Selecciona tu Firma de Autor Registrada:</label>
+                        <select id="poemAuthorSelect" class="form-control" required>
+                          <option value="">-- Cargar Autores... --</option>
+                        </select>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label for="poemTitle">Título del Poema:</label>
+                        <input type="text" id="poemTitle" class="form-control" placeholder="Ej: Poema de la Lluvia" required>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label for="poemContent">Contenido del Poema (Límite estricto de 400 caracteres):</label>
+                        <textarea id="poemContent" class="form-control" rows="4" maxlength="400" oninput="actualizarContadorPoema()" placeholder="Escribe tu obra aquí..." required></textarea>
+                        <span id="charCounter" style="display: block; text-align: right; font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">0 / 400</span>
+                      </div>
+                      
+                      <button type="submit" class="btn" style="background: linear-gradient(135deg, var(--success-color) 0%, #059669 100%);">
+                        🚀 Publicar Obra en el Point Smart
+                      </button>
+                    </form>
+                  </div>
+                </div>
+
+                <!-- Formulario de Registro de Autores -->
+                <div>
+                  <h3 style="margin-bottom: 1rem;">✍️ Aceptar Contrato y Registrar Firma</h3>
+                  <form id="formRegistro">
+                    <div class="form-group">
+                      <label for="penName">Firma / Nombre Artístico (ej. Goyo.art3):</label>
+                      <input type="text" id="penName" class="form-control" placeholder="Ej: Goyo.art3" required>
+                    </div>
+                    
+                    <div class="form-group">
+                      <label for="legalName">Nombre Legal y Apellido Completo:</label>
+                      <input type="text" id="legalName" class="form-control" placeholder="Ej: Gregorio Martín" required>
+                    </div>
+                    
+                    <div class="form-group">
+                      <label for="cuitCuil">CUIT/CUIL Argentino (XX-XXXXXXXX-X):</label>
+                      <input type="text" id="cuitCuil" class="form-control" placeholder="Ej: 20-34567890-9" pattern="\\d{2}-\\d{8}-\\d{1}" title="Formato requerido: XX-XXXXXXXX-X" required>
+                    </div>
+                    
+                    <div class="form-group">
+                      <label for="wallet">Dirección Wallet EVM (Para recibir RFC en Amoy/Hardhat):</label>
+                      <input type="text" id="wallet" class="form-control" placeholder="Ej: 0x..." pattern="0x[a-fA-F0-9]{40}" title="Debe ser una dirección wallet EVM válida de 42 caracteres" required>
+                    </div>
+                    
+                    <div class="form-group">
+                      <label for="pricePerUse">Tarifa de Payout (RFC por cada impresión):</label>
+                      <input type="number" id="pricePerUse" class="form-control" value="1" min="1" step="1" required>
+                    </div>
+
+                    <div class="form-group">
+                      <label for="nationality">País de Residencia / Nacionalidad:</label>
+                      <select id="nationality" class="form-control" required>
+                        <option value="Argentino">Argentino / Residente Legal en Argentina</option>
+                      </select>
+                    </div>
+
+                    <div class="checkbox-group">
+                      <input type="checkbox" id="acceptTerms" required>
+                      <label for="acceptTerms">
+                        Declaro bajo juramento ser ciudadano argentino o residente legal, y acepto formalmente los términos del contrato de licencia y de moderación editorial.
+                      </label>
+                    </div>
+                    
+                    <button type="submit" class="btn">
+                      🖋️ Aceptar y Registrar
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            <!-- TARJETA: TABLA DE AUTORES Y SALDOS -->
+            <div class="card full-width">
+              <h2>👥 Firmas Autorizadas y Balances de Red</h2>
+              <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">
+                Balances consultados en tiempo real desde la blockchain local o Polygon Amoy.
+              </p>
+              <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+                  <thead>
+                    <tr style="border-bottom: 2px solid var(--border-color); color: var(--primary-color);">
+                      <th style="padding: 0.8rem;">Firma de Autor</th>
+                      <th style="padding: 0.8rem;">Nombre Legal</th>
+                      <th style="padding: 0.8rem;">CUIT/CUIL</th>
+                      <th style="padding: 0.8rem;">Wallet Destinatario</th>
+                      <th style="padding: 0.8rem; text-align: right;">Tarifa por Uso</th>
+                      <th style="padding: 0.8rem; text-align: right;">Saldo en Wallet</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tablaAutoresBody">
+                    <!-- Rellenado por JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- TARJETA: HISTORIAL DE TRANSACCIONES BLOCKCHAIN -->
+            <div class="card full-width">
+              <h2>🔗 Registro de Transacciones Blockchain (Tokens RFC)</h2>
+              <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem;">
+                Liquidación automatizada e inmutable de regalías RFC por impresión en Point Smart.
+              </p>
+              <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+                  <thead>
+                    <tr style="border-bottom: 2px solid var(--border-color); color: var(--primary-color);">
+                      <th style="padding: 0.8rem;">Fecha y Hora</th>
+                      <th style="padding: 0.8rem;">Autor</th>
+                      <th style="padding: 0.8rem;">Poema</th>
+                      <th style="padding: 0.8rem;">Wallet Destino</th>
+                      <th style="padding: 0.8rem; text-align: right;">Monto RFC</th>
+                      <th style="padding: 0.8rem;">Estado</th>
+                      <th style="padding: 0.8rem;">Hash de Transacción</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tablaTxsBody">
+                    <!-- Rellenado por JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
       </div>
 
       <div id="toast" class="toast">¡Imprimiendo poema de prueba!</div>
@@ -652,6 +967,213 @@ app.get('/', async (req, res) => {
       <script>
         // Rellenar dinámicamente la URL del webhook basada en el navegador actual
         document.getElementById('webhookUrl').textContent = window.location.origin + '/webhook';
+
+        // Cambiar entre pestañas
+        function switchTab(tabId) {
+          // Ocultar todos los contenidos de pestañas
+          document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+          // Desactivar todos los botones
+          document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+          
+          // Mostrar la pestaña seleccionada
+          document.getElementById(tabId).classList.add('active');
+          
+          // Activar el botón de la pestaña correspondiente
+          if (tabId === 'tab-smart') {
+            document.getElementById('tabBtnSmart').classList.add('active');
+          } else if (tabId === 'tab-autores') {
+            document.getElementById('tabBtnAutores').classList.add('active');
+            loadAuthorPortalData();
+          }
+        }
+
+        // Contador de caracteres para poemas
+        function actualizarContadorPoema() {
+          const content = document.getElementById('poemContent').value;
+          document.getElementById('charCounter').textContent = content.length + ' / 400';
+        }
+
+        // Cargar datos dinámicos del portal de autores
+        async function loadAuthorPortalData() {
+          try {
+            const response = await fetch('/api/author-portal-data');
+            if (!response.ok) throw new Error('No se pudieron obtener datos del portal de autores');
+            
+            const data = await response.json();
+
+            // 1. Rellenar tabla de autores
+            const tablaAutoresBody = document.getElementById('tablaAutoresBody');
+            tablaAutoresBody.innerHTML = '';
+            
+            const poemAuthorSelect = document.getElementById('poemAuthorSelect');
+            poemAuthorSelect.innerHTML = '<option value="">-- Selecciona tu Firma Autorizada --</option>';
+
+            const authorNames = Object.keys(data.authors);
+            if (authorNames.length === 0) {
+              tablaAutoresBody.innerHTML = \`
+                <tr>
+                  <td colspan="6" style="padding: 1.5rem; text-align: center; color: var(--text-muted);">
+                    No hay autores registrados en el sistema digital todavía.
+                  </td>
+                </tr>
+              \`;
+            } else {
+              authorNames.forEach(name => {
+                const author = data.authors[name];
+                
+                // Buscar balance del autor
+                let balance = '0.00 RFC';
+                // Encontrar un poema del autor para ver el balance de su wallet
+                const matchingPoem = data.poems.find(p => p.author === name);
+                if (matchingPoem) {
+                  balance = matchingPoem.walletBalance + ' RFC';
+                }
+
+                const row = document.createElement('tr');
+                row.style.borderBottom = '1px solid rgba(255, 255, 255, 0.05)';
+                row.innerHTML = \`
+                  <td style="padding: 0.8rem; font-weight: 600; color: #fff;">\${name}</td>
+                  <td style="padding: 0.8rem; color: var(--text-muted);">\${author.legalName}</td>
+                  <td style="padding: 0.8rem; color: var(--text-muted);">\${author.cuitCuil}</td>
+                  <td style="padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: var(--primary-color);">\${author.wallet}</td>
+                  <td style="padding: 0.8rem; text-align: right; font-weight: bold; color: var(--success-color);">\${author.pricePerUse} RFC</td>
+                  <td style="padding: 0.8rem; text-align: right; font-family: monospace; font-weight: bold; color: #fff;">\${balance}</td>
+                \`;
+                tablaAutoresBody.appendChild(row);
+
+                // Añadir al select
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name + ' (' + author.legalName + ')';
+                poemAuthorSelect.appendChild(option);
+              });
+            }
+
+            // 2. Rellenar tabla de transacciones blockchain
+            const tablaTxsBody = document.getElementById('tablaTxsBody');
+            tablaTxsBody.innerHTML = '';
+
+            if (data.blockchainTxs.length === 0) {
+              tablaTxsBody.innerHTML = \`
+                <tr>
+                  <td colspan="7" style="padding: 1.5rem; text-align: center; color: var(--text-muted);">
+                    No se han registrado transacciones blockchain en esta sesión.
+                  </td>
+                </tr>
+              \`;
+            } else {
+              data.blockchainTxs.forEach(tx => {
+                const date = new Date(tx.timestamp).toLocaleString('es-AR');
+                const badge = tx.isSimulated 
+                  ? '<span class="badge-simulated">Simulada</span>' 
+                  : '<span class="badge-real">Real (Confirmada)</span>';
+                
+                const shortHash = tx.txHash.substring(0, 10) + '...' + tx.txHash.substring(tx.txHash.length - 8);
+                const hashHtml = tx.isSimulated 
+                  ? \`<span style="font-family: monospace; font-size: 0.85rem; color: var(--text-muted);" title="\${tx.txHash}">\${shortHash}</span>\`
+                  : \`<a href="https://amoy.polygonscan.com/tx/\${tx.txHash}" target="_blank" style="font-family: monospace; font-size: 0.85rem; color: var(--primary-color);" title="Ver en explorador Polygonscan">\${shortHash} ↗</a>\`;
+
+                const row = document.createElement('tr');
+                row.style.borderBottom = '1px solid rgba(255, 255, 255, 0.05)';
+                row.innerHTML = \`
+                  <td style="padding: 0.8rem; color: var(--text-muted);">\${date}</td>
+                  <td style="padding: 0.8rem; font-weight: 600; color: #fff;">\${tx.author}</td>
+                  <td style="padding: 0.8rem; color: var(--text-muted); font-style: italic;">\${tx.filename}</td>
+                  <td style="padding: 0.8rem; font-family: monospace; font-size: 0.82rem; color: var(--text-muted);">\${tx.wallet}</td>
+                  <td style="padding: 0.8rem; text-align: right; font-weight: bold; color: var(--success-color);">\${tx.amount} RFC</td>
+                  <td style="padding: 0.8rem;">\${badge}</td>
+                  <td style="padding: 0.8rem;">\${hashHtml}</td>
+                \`;
+                tablaTxsBody.appendChild(row);
+              });
+            }
+          } catch (err) {
+            console.error('Error cargando los datos del portal:', err);
+          }
+        }
+
+        // Manejar el envío de registro de autores
+        const formRegistro = document.getElementById('formRegistro');
+        if (formRegistro) {
+          formRegistro.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btnSubmit = formRegistro.querySelector('button[type="submit"]');
+            btnSubmit.disabled = true;
+            btnSubmit.textContent = 'Procesando Firma...';
+
+            const payload = {
+              penName: document.getElementById('penName').value,
+              legalName: document.getElementById('legalName').value,
+              cuitCuil: document.getElementById('cuitCuil').value,
+              wallet: document.getElementById('wallet').value,
+              pricePerUse: document.getElementById('pricePerUse').value,
+              nationality: document.getElementById('nationality').value,
+              acceptedTerms: document.getElementById('acceptTerms').checked
+            };
+
+            try {
+              const response = await fetch('/api/register-author', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+
+              const data = await response.json();
+              if (response.ok) {
+                showToast('¡Firma de autor registrada y contrato firmado digitalmente!');
+                formRegistro.reset();
+                loadAuthorPortalData();
+              } else {
+                showToast('Error: ' + data.error);
+              }
+            } catch (err) {
+              showToast('Error de conexión al registrar autor.');
+            } finally {
+              btnSubmit.disabled = false;
+              btnSubmit.textContent = '🖋️ Aceptar y Registrar';
+            }
+          });
+        }
+
+        // Manejar la subida de poemas
+        const formPoema = document.getElementById('formPoema');
+        if (formPoema) {
+          formPoema.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btnSubmit = formPoema.querySelector('button[type="submit"]');
+            btnSubmit.disabled = true;
+            btnSubmit.textContent = 'Publicando Poema...';
+
+            const payload = {
+              authorName: document.getElementById('poemAuthorSelect').value,
+              title: document.getElementById('poemTitle').value,
+              content: document.getElementById('poemContent').value
+            };
+
+            try {
+              const response = await fetch('/api/upload-poem', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+
+              const data = await response.json();
+              if (response.ok) {
+                showToast('¡Poema publicado y cargado en el sistema con éxito!');
+                formPoema.reset();
+                document.getElementById('charCounter').textContent = '0 / 400';
+                loadAuthorPortalData();
+              } else {
+                showToast('Error: ' + data.error);
+              }
+            } catch (err) {
+              showToast('Error de red al subir el poema.');
+            } finally {
+              btnSubmit.disabled = false;
+              btnSubmit.textContent = '🚀 Publicar Obra en el Point Smart';
+            }
+          });
+        }
 
         // Manejar botón de prueba de impresión
         const btnTest = document.getElementById('btnTest');
@@ -817,6 +1339,9 @@ app.get('/', async (req, res) => {
             toast.style.display = 'none';
           }, 4000);
         }
+
+        // Cargar datos por defecto al iniciar
+        loadAuthorPortalData();
       </script>
     </body>
     </html>
@@ -1244,9 +1769,10 @@ app.get('/pecar', (req, res) => {
 app.post('/test-print', async (req, res) => {
   try {
     console.log('[Prueba] Solicitando impresión de prueba manual...');
-    const { filename, content } = await getRandomPoem();
+    const { filename, content, author, price } = await getRandomPoem();
     const result = await printOnTerminal(content);
     await incrementPoemPrint(filename);
+    await triggerBlockchainPayout(author, filename, price);
     return res.status(200).json({ success: true, message: 'Impresión de prueba enviada', result });
   } catch (error) {
     const errorDetails = error.response?.data ? JSON.stringify(error.response.data) : error.message;
@@ -1291,12 +1817,13 @@ app.post('/print-logo-and-poem', async (req, res) => {
     }
 
     // 2. Poema
-    const { filename, content } = await getRandomPoem();
+    const { filename, content, author, price } = await getRandomPoem();
     await executePrintActionWithRetry(
       () => printOnTerminal(content),
       'Poema'
     );
     await incrementPoemPrint(filename);
+    await triggerBlockchainPayout(author, filename, price);
 
     return res.status(200).json({ success: true, message: 'Impresión en efectivo enviada con éxito' });
   } catch (error) {
@@ -1432,8 +1959,242 @@ app.post('/reset-stats', async (req, res) => {
   }
 });
 
-// --- Control de Impresiones de Poemas (Estadísticas y Regalías) ---
+// --- Portal de Autores y Blockchain API ---
+const REGISTRY_FILE = path.join(__dirname, '../author_registry.json');
+const BLOCKCHAIN_TXS_FILE = path.join(__dirname, '../blockchain_txs.json');
 const STATS_FILE = path.join(__dirname, '../poem_stats.json');
+
+// Obtener datos del portal de autor (autores, poemas, transacciones)
+app.get('/api/author-portal-data', async (req, res) => {
+  try {
+    let registry = {};
+    if (fs.existsSync(REGISTRY_FILE)) {
+      registry = JSON.parse(await fs.promises.readFile(REGISTRY_FILE, 'utf8'));
+    }
+
+    let txs = [];
+    if (fs.existsSync(BLOCKCHAIN_TXS_FILE)) {
+      txs = JSON.parse(await fs.promises.readFile(BLOCKCHAIN_TXS_FILE, 'utf8'));
+    }
+
+    // Listar poemas con sus detalles para la vista del autor
+    const poemsDir = path.join(__dirname, '../poemas');
+    const poemsList = [];
+    
+    // Leer estadísticas de impresión
+    let stats = {};
+    if (fs.existsSync(STATS_FILE)) {
+      stats = JSON.parse(await fs.promises.readFile(STATS_FILE, 'utf8'));
+    }
+
+    if (fs.existsSync(poemsDir)) {
+      const files = await fs.promises.readdir(poemsDir);
+      const txtFiles = files.filter(f => f.endsWith('.txt'));
+      
+      for (const file of txtFiles) {
+        const content = await fs.promises.readFile(path.join(poemsDir, file), 'utf8');
+        const { title, author } = parsePoemMetadata(file, content);
+        const prints = stats[file] || 0;
+        
+        let price = 1;
+        let isRegistered = false;
+        let wallet = '';
+        
+        if (registry[author]) {
+          price = registry[author].pricePerUse;
+          isRegistered = true;
+          wallet = registry[author].wallet;
+        }
+
+        // Consultar balance en segundo plano o simulado rápido
+        let walletBalance = '0.00';
+        if (isRegistered && wallet) {
+          const wDetails = await getWalletDetails(wallet);
+          walletBalance = wDetails.balance;
+        }
+
+        poemsList.push({
+          filename: file,
+          title,
+          author,
+          prints,
+          price,
+          isRegistered,
+          wallet,
+          walletBalance
+        });
+      }
+    }
+
+    return res.status(200).json({
+      authors: registry,
+      blockchainTxs: txs,
+      poems: poemsList
+    });
+  } catch (error) {
+    console.error('[API] Error al obtener datos del portal:', error.message);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// Registrar un autor
+app.post('/api/register-author', async (req, res) => {
+  const { penName, legalName, cuitCuil, wallet, pricePerUse, nationality, acceptedTerms } = req.body;
+
+  if (!penName || !legalName || !cuitCuil || !wallet || !pricePerUse || !nationality) {
+    return res.status(400).json({ error: 'Todos los campos son obligatorios' });
+  }
+
+  if (acceptedTerms !== true && acceptedTerms !== 'true') {
+    return res.status(400).json({ error: 'Debes aceptar los términos y condiciones del contrato' });
+  }
+
+  // Validación de CUIT/CUIL argentino (XX-XXXXXXXX-X)
+  const cuitRegex = /^\d{2}-\d{8}-\d{1}$/;
+  if (!cuitRegex.test(cuitCuil.trim())) {
+    return res.status(400).json({ error: 'El CUIT/CUIL debe tener un formato válido: XX-XXXXXXXX-X' });
+  }
+
+  // Validación de wallet EVM (0x seguido de 40 caracteres hexadecimales)
+  const walletRegex = /^0x[a-fA-F0-9]{40}$/;
+  if (!walletRegex.test(wallet.trim())) {
+    return res.status(400).json({ error: 'La dirección wallet debe ser una dirección Ethereum/EVM válida de 42 caracteres (empezando con 0x)' });
+  }
+
+  const priceVal = parseFloat(pricePerUse);
+  if (isNaN(priceVal) || priceVal < 1) {
+    return res.status(400).json({ error: 'El precio por uso debe ser un número mayor o igual a 1 RFC' });
+  }
+
+  try {
+    let registry = {};
+    if (fs.existsSync(REGISTRY_FILE)) {
+      registry = JSON.parse(await fs.promises.readFile(REGISTRY_FILE, 'utf8'));
+    }
+
+    // Guardar o actualizar autor en el registro
+    registry[penName.trim()] = {
+      legalName: legalName.trim(),
+      cuitCuil: cuitCuil.trim(),
+      wallet: wallet.trim(),
+      pricePerUse: priceVal,
+      nationality: nationality.trim(),
+      acceptedTerms: true,
+      acceptedDate: new Date().toISOString()
+    };
+
+    await fs.promises.writeFile(REGISTRY_FILE, JSON.stringify(registry, null, 2), 'utf8');
+    console.log(`[API] Autor registrado con éxito: ${penName}`);
+
+    return res.status(200).json({ success: true, message: 'Autor registrado correctamente' });
+  } catch (error) {
+    console.error('[API] Error al registrar autor:', error.message);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// Subir un poema nuevo
+app.post('/api/upload-poem', async (req, res) => {
+  const { title, content, authorName } = req.body;
+
+  if (!title || !content || !authorName) {
+    return res.status(400).json({ error: 'Faltan campos obligatorios: título, contenido o autor' });
+  }
+
+  if (content.length > 400) {
+    return res.status(400).json({ error: 'El poema supera el límite máximo de 400 caracteres' });
+  }
+
+  try {
+    // Validar que el autor esté registrado
+    let registry = {};
+    if (fs.existsSync(REGISTRY_FILE)) {
+      registry = JSON.parse(await fs.promises.readFile(REGISTRY_FILE, 'utf8'));
+    }
+
+    if (!registry[authorName.trim()]) {
+      return res.status(400).json({ error: 'El autor especificado no está registrado en el sistema. Regístrate primero.' });
+    }
+
+    // Guardar el poema como archivo .txt en la carpeta poemas/
+    const poemsDir = path.join(__dirname, '../poemas');
+    const cleanTitle = title.toLowerCase().trim().replace(/[^a-z0-9_]/gi, '_');
+    
+    let filename = `${cleanTitle}.txt`;
+    let filePath = path.join(poemsDir, filename);
+    
+    // Si ya existe, agregar un sufijo único
+    if (fs.existsSync(filePath)) {
+      filename = `${cleanTitle}_${Date.now()}.txt`;
+      filePath = path.join(poemsDir, filename);
+    }
+
+    // Formato de guardado del poema
+    const fileContent = `${title.trim()}\n\n${content.trim()}\n\nAutor: ${authorName.trim()}\n`;
+    
+    await fs.promises.writeFile(filePath, fileContent, 'utf8');
+    console.log(`[API] Nuevo poema guardado en: ${filename} por el autor ${authorName}`);
+
+    return res.status(200).json({ success: true, message: `Poema "${title}" subido y publicado con éxito` });
+  } catch (error) {
+    console.error('[API] Error al subir poema:', error.message);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+async function triggerBlockchainPayout(author, filename, price) {
+  if (!author) return;
+
+  try {
+    let registry = {};
+    if (fs.existsSync(REGISTRY_FILE)) {
+      registry = JSON.parse(await fs.promises.readFile(REGISTRY_FILE, 'utf8'));
+    }
+
+    if (registry[author] && registry[author].wallet) {
+      const wallet = registry[author].wallet;
+      const payoutPrice = parseFloat(price) || parseFloat(registry[author].pricePerUse) || 1;
+
+      console.log(`[Pago Token] Disparando pago de ${payoutPrice} RFC para el autor registrado "${author}" (Wallet: ${wallet}) por impresión de "${filename}".`);
+
+      // Llamar a la blockchain para transferir tokens
+      const txResult = await transferRFCTokens(wallet, payoutPrice);
+
+      // Registrar la transacción en blockchain_txs.json
+      if (txResult.success) {
+        let txs = [];
+        if (fs.existsSync(BLOCKCHAIN_TXS_FILE)) {
+          txs = JSON.parse(await fs.promises.readFile(BLOCKCHAIN_TXS_FILE, 'utf8'));
+        }
+
+        txs.unshift({
+          timestamp: new Date().toISOString(),
+          author,
+          filename,
+          wallet,
+          amount: payoutPrice,
+          txHash: txResult.txHash,
+          blockNumber: txResult.blockNumber,
+          isSimulated: txResult.isSimulated,
+          note: txResult.note || ''
+        });
+
+        if (txs.length > 100) {
+          txs = txs.slice(0, 100);
+        }
+
+        await fs.promises.writeFile(BLOCKCHAIN_TXS_FILE, JSON.stringify(txs, null, 2), 'utf8');
+        console.log(`[Pago Token] Transacción registrada con éxito. Hash: ${txResult.txHash}`);
+      } else {
+        console.error(`[Pago Token] Error al realizar la transacción blockchain: ${txResult.error}`);
+      }
+    } else {
+      console.log(`[Pago Token] El autor "${author}" de "${filename}" no está registrado para recibir pagos con token RFC o no tiene wallet configurado.`);
+    }
+  } catch (err) {
+    console.error('[Pago Token] Error crítico en triggerBlockchainPayout:', err.message);
+  }
+}
 
 async function incrementPoemPrint(filename) {
   let stats = {};
@@ -1578,7 +2339,7 @@ async function processApprovedPayment(paymentId, amount) {
   // 2. Imprimir el poema con reintentos
   try {
     console.log('[Impresora] Encolando impresión de poema...');
-    const { filename, content } = await getRandomPoem();
+    const { filename, content, author, price } = await getRandomPoem();
     
     await executePrintActionWithRetry(
       () => printOnTerminal(content),
@@ -1586,6 +2347,7 @@ async function processApprovedPayment(paymentId, amount) {
     );
     
     await incrementPoemPrint(filename);
+    await triggerBlockchainPayout(author, filename, price);
     
     // Registrar en el archivo de control
     markPaymentAsPrinted(paymentIdStr);

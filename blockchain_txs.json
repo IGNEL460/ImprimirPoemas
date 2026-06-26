@@ -1,0 +1,24 @@
+[
+  {
+    "timestamp": "2026-06-26T02:54:57.211Z",
+    "author": "Martina.Poetry",
+    "filename": "viento_del_sur_1782442485874.txt",
+    "wallet": "0x1234567890123456789012345678901234567890",
+    "amount": 3,
+    "txHash": "0x918997f14be864cc5b2b6328d44c6acb7b995bac87b2b7238006635b5ccf181c",
+    "blockNumber": 7049805,
+    "isSimulated": true,
+    "note": "Dirección del contrato RFC (RFC_CONTRACT_ADDRESS) no configurada"
+  },
+  {
+    "timestamp": "2026-06-26T02:54:46.536Z",
+    "author": "Goyo.art3",
+    "filename": "goyo.txt",
+    "wallet": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+    "amount": 5,
+    "txHash": "0x3ec70f39aa777d820b78d0d536dfe901d8ecdc2d79dfac4d894bb89d1ad7f94d",
+    "blockNumber": 7054668,
+    "isSimulated": true,
+    "note": "Dirección del contrato RFC (RFC_CONTRACT_ADDRESS) no configurada"
+  }
+]
