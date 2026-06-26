@@ -31,6 +31,10 @@ try {
                     (process.env.MP_ACCESS_TOKEN && (
                       process.env.MP_ACCESS_TOKEN.startsWith('TEST-') || 
                       process.env.MP_ACCESS_TOKEN.includes('370217986407903')
+                    )) ||
+                    (process.env.MP_ACCESS_TOKEN_TEST && (
+                      process.env.MP_ACCESS_TOKEN_TEST.startsWith('TEST-') || 
+                      process.env.MP_ACCESS_TOKEN_TEST.includes('370217986407903')
                     ));
     console.log(`[Config] Autodetectado Modo Sandbox: ${isSandboxMode}`);
   }
@@ -51,6 +55,21 @@ function saveSettings() {
 let simulatedPrints = [];
 let simulatedOrders = {};
 let simulatedPayments = {};
+
+// Getters dinámicos para credenciales de Mercado Pago según el modo
+function getMPAccessToken() {
+  if (isSandboxMode && process.env.MP_ACCESS_TOKEN_TEST) {
+    return process.env.MP_ACCESS_TOKEN_TEST;
+  }
+  return process.env.MP_ACCESS_TOKEN;
+}
+
+function getMPTerminalId() {
+  if (isSandboxMode && process.env.MP_TERMINAL_ID_TEST) {
+    return process.env.MP_TERMINAL_ID_TEST;
+  }
+  return process.env.MP_TERMINAL_ID;
+}
 
 // Cargar imagen de logo en Base64 para imprimir en terminales
 let logoBase64 = '';
@@ -144,8 +163,8 @@ function formatPoemForPoint(poem) {
 
 // Enviar acción de impresión a la terminal de Mercado Pago (Texto personalizado)
 async function printOnTerminal(text) {
-  const accessToken = process.env.MP_ACCESS_TOKEN;
-  const terminalId = process.env.MP_TERMINAL_ID;
+  const accessToken = getMPAccessToken();
+  const terminalId = getMPTerminalId();
 
   if (!isSandboxMode) {
     if (!accessToken || accessToken.includes('tu_access_token')) {
@@ -210,8 +229,8 @@ async function printImageOnTerminal() {
     return null;
   }
 
-  const accessToken = process.env.MP_ACCESS_TOKEN;
-  const terminalId = process.env.MP_TERMINAL_ID;
+  const accessToken = getMPAccessToken();
+  const terminalId = getMPTerminalId();
 
   if (!isSandboxMode) {
     if (!accessToken || accessToken.includes('tu_access_token')) {
@@ -1543,9 +1562,10 @@ app.get('/dashboard', (req, res) => {
   res.redirect('/admin');
 });
 app.get('/admin', async (req, res) => {
-  const accessToken = process.env.MP_ACCESS_TOKEN;
+  const accessToken = getMPAccessToken();
+  const terminalId = getMPTerminalId();
   const hasToken = (accessToken && !accessToken.includes('tu_access_token')) || isSandboxMode;
-  const hasTerminal = (process.env.MP_TERMINAL_ID && !process.env.MP_TERMINAL_ID.includes('tu_terminal_id')) || isSandboxMode;
+  const hasTerminal = (terminalId && !terminalId.includes('tu_terminal_id')) || isSandboxMode;
 
   let terminals = [];
   let terminalError = null;
@@ -3419,8 +3439,8 @@ app.post('/print-logo-and-poem', async (req, res) => {
 // Endpoint para crear una orden de cobro en la terminal Point
 app.post('/create-order', async (req, res) => {
   const { amount, notificationUrl } = req.body;
-  const accessToken = process.env.MP_ACCESS_TOKEN;
-  const terminalId = process.env.MP_TERMINAL_ID;
+  const accessToken = getMPAccessToken();
+  const terminalId = getMPTerminalId();
 
   if (!isSandboxMode) {
     if (!accessToken || accessToken.includes('tu_access_token')) {
@@ -3534,7 +3554,7 @@ app.post('/create-order', async (req, res) => {
 // Endpoint para configurar la terminal en modo PDV o STANDALONE
 app.post('/change-terminal-mode', async (req, res) => {
   const { terminalId, mode } = req.body;
-  const accessToken = process.env.MP_ACCESS_TOKEN;
+  const accessToken = getMPAccessToken();
 
   if (!isSandboxMode) {
     if (!accessToken || accessToken.includes('tu_access_token')) {
@@ -4110,7 +4130,7 @@ async function processApprovedPayment(paymentId, amount) {
 
 // Función para realizar polling del estado de una orden de cobro
 async function startOrderPolling(orderId, maxAttempts = 100, intervalMs = 3000) {
-  const accessToken = process.env.MP_ACCESS_TOKEN;
+  const accessToken = getMPAccessToken();
   console.log(`[Polling] Iniciando consulta de estado para la orden ${orderId} (${maxAttempts} intentos, cada ${intervalMs}ms)...`);
   
   let attempts = 0;
@@ -4188,7 +4208,7 @@ app.post('/webhook', async (req, res) => {
     console.log(`[Webhook] Recibida notificación. Tipo/Tema: ${topic}, Acción: ${action}`);
     console.log(`[Webhook] Cuerpo completo de la notificación:`, JSON.stringify(req.body, null, 2));
 
-    const accessToken = process.env.MP_ACCESS_TOKEN;
+    const accessToken = getMPAccessToken();
 
     // Extraer el ID del recurso (soporta data.id, id, o la URL del resource)
     let resourceId = data?.id || id;
