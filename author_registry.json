@@ -16,5 +16,14 @@
     "nationality": "Argentino",
     "acceptedTerms": true,
     "acceptedDate": "2026-06-26T02:54:45.866Z"
+  },
+  "TestArtist.New": {
+    "legalName": "Test Artist Legal Name",
+    "cuitCuil": "20-12345678-9",
+    "wallet": "0x1234567890123456789012345678901234567890",
+    "pricePerUse": 2,
+    "nationality": "Argentino",
+    "acceptedTerms": true,
+    "acceptedDate": "2026-06-26T03:54:35.115Z"
   }
 }

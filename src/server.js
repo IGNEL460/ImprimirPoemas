@@ -37,6 +37,18 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Helper para obtener el autor autenticado desde la cookie
+function getAuthorFromCookie(req) {
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return null;
+  const cookies = cookieHeader.split(';').reduce((acc, c) => {
+    const [name, ...val] = c.trim().split('=');
+    acc[name] = val.join('=');
+    return acc;
+  }, {});
+  return cookies.author_session ? decodeURIComponent(cookies.author_session) : null;
+}
+
 // Función auxiliar para realizar ajuste de línea (Word Wrap) sin cortar palabras
 function wrapText(text, limit = 30) {
   const words = text.split(' ');
@@ -185,8 +197,1281 @@ async function printImageOnTerminal() {
   return response.data;
 }
 
+// Página de Presentación y Acceso para Artistas
+const servePresentationPage = (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Poemas al Viento - El Pecado Teatro</title>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+      <style>
+        :root {
+          --bg-color: #0b0303;
+          --card-bg: rgba(22, 10, 10, 0.7);
+          --border-color: rgba(239, 68, 68, 0.15);
+          --text-color: #fbecec;
+          --text-muted: #cda2a2;
+          --primary-color: #ef4444;
+          --primary-hover: #dc2626;
+          --accent-color: #fbbf24;
+          --accent-hover: #f59e0b;
+        }
+
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+        }
+
+        body {
+          font-family: 'Outfit', sans-serif;
+          background-color: var(--bg-color);
+          background-image: 
+            radial-gradient(circle at 10% 20%, rgba(239, 68, 68, 0.12) 0%, transparent 40%),
+            radial-gradient(circle at 90% 80%, rgba(251, 191, 36, 0.04) 0%, transparent 40%);
+          color: var(--text-color);
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          line-height: 1.6;
+        }
+
+        header {
+          padding: 2.5rem 1rem 1.5rem 1rem;
+          text-align: center;
+          border-bottom: 1px solid rgba(239, 68, 68, 0.08);
+          background: rgba(11, 3, 3, 0.5);
+          backdrop-filter: blur(8px);
+        }
+
+        header h1 {
+          font-family: 'Playfair Display', serif;
+          font-size: 2.8rem;
+          font-weight: 700;
+          background: linear-gradient(135deg, #fff 30%, #ef4444 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          margin-bottom: 0.3rem;
+        }
+
+        header p {
+          color: var(--text-muted);
+          font-size: 1.1rem;
+          font-style: italic;
+          letter-spacing: 1px;
+        }
+
+        .main-container {
+          max-width: 1100px;
+          margin: 3rem auto;
+          padding: 0 1.5rem;
+          flex: 1;
+          display: grid;
+          grid-template-columns: 1.1fr 0.9fr;
+          gap: 3rem;
+          align-items: start;
+        }
+
+        @media (max-width: 900px) {
+          .main-container {
+            grid-template-columns: 1fr;
+            margin: 1.5rem auto;
+            gap: 2rem;
+          }
+        }
+
+        .presentation-side h2 {
+          font-family: 'Playfair Display', serif;
+          font-size: 2.2rem;
+          margin-bottom: 1.5rem;
+          color: #fff;
+          border-left: 4px solid var(--primary-color);
+          padding-left: 1rem;
+        }
+
+        .presentation-side p {
+          font-size: 1.05rem;
+          color: var(--text-muted);
+          margin-bottom: 1.5rem;
+          line-height: 1.8;
+        }
+
+        .feature-card {
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid rgba(239, 68, 68, 0.05);
+          border-radius: 16px;
+          padding: 1.25rem;
+          margin-bottom: 1.2rem;
+          display: flex;
+          gap: 1rem;
+          align-items: flex-start;
+          transition: transform 0.2s, border-color 0.2s;
+        }
+
+        .feature-card:hover {
+          transform: translateX(4px);
+          border-color: rgba(239, 68, 68, 0.15);
+        }
+
+        .feature-icon {
+          font-size: 2rem;
+          line-height: 1;
+        }
+
+        .feature-text h3 {
+          font-size: 1.1rem;
+          color: #fff;
+          margin-bottom: 0.3rem;
+        }
+
+        .feature-text p {
+          font-size: 0.95rem;
+          color: var(--text-muted);
+          margin-bottom: 0;
+          line-height: 1.5;
+        }
+
+        .form-card {
+          background: var(--card-bg);
+          backdrop-filter: blur(16px);
+          border: 1px solid var(--border-color);
+          border-radius: 24px;
+          padding: 2.2rem;
+          box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6);
+        }
+
+        .form-card h2 {
+          font-family: 'Playfair Display', serif;
+          font-size: 1.7rem;
+          margin-bottom: 1.5rem;
+          text-align: center;
+          color: #fff;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .form-group {
+          margin-bottom: 1.2rem;
+        }
+
+        .form-group label {
+          display: block;
+          font-size: 0.85rem;
+          color: var(--text-muted);
+          margin-bottom: 0.4rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .form-control {
+          width: 100%;
+          padding: 0.8rem 1rem;
+          border-radius: 12px;
+          border: 1px solid var(--border-color);
+          background: rgba(0, 0, 0, 0.45);
+          color: white;
+          font-family: 'Outfit', sans-serif;
+          font-size: 1rem;
+          outline: none;
+          transition: all 0.2s;
+        }
+
+        .form-control:focus {
+          border-color: var(--primary-color);
+          box-shadow: 0 0 10px rgba(239, 68, 68, 0.15);
+        }
+
+        .btn {
+          display: inline-block;
+          width: 100%;
+          padding: 0.9rem;
+          background: linear-gradient(135deg, var(--primary-color) 0%, #b91c1c 100%);
+          border: none;
+          border-radius: 12px;
+          color: white;
+          font-size: 1.05rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s;
+          box-shadow: 0 4px 15px rgba(239, 68, 68, 0.2);
+          text-align: center;
+          outline: none;
+        }
+
+        .btn:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 20px rgba(239, 68, 68, 0.35);
+        }
+
+        .btn:active {
+          transform: scale(0.99);
+        }
+
+        .btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+          transform: none;
+          box-shadow: none;
+        }
+
+        .btn-secondary {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          color: var(--text-muted);
+        }
+
+        .btn-secondary:hover {
+          background: rgba(255, 255, 255, 0.08);
+          color: #fff;
+          box-shadow: none;
+        }
+
+        /* Registro colapsable */
+        .register-section {
+          max-height: 0;
+          overflow: hidden;
+          transition: max-height 0.4s ease-out;
+        }
+
+        .register-section.active {
+          max-height: 1200px;
+          margin-top: 1.5rem;
+          border-top: 1px dashed rgba(239, 68, 68, 0.15);
+          padding-top: 1.5rem;
+        }
+
+        .contract-viewer {
+          background: rgba(0, 0, 0, 0.35);
+          border: 1px solid var(--border-color);
+          border-radius: 12px;
+          padding: 1rem;
+          max-height: 180px;
+          overflow-y: auto;
+          font-size: 0.82rem;
+          color: var(--text-muted);
+          line-height: 1.5;
+          margin-bottom: 1rem;
+        }
+
+        .contract-viewer h3 {
+          color: #fff;
+          font-family: 'Playfair Display', serif;
+          margin-bottom: 0.5rem;
+          font-size: 0.95rem;
+          text-align: center;
+        }
+
+        .checkbox-group {
+          display: flex;
+          gap: 0.6rem;
+          align-items: flex-start;
+          margin: 1rem 0;
+          font-size: 0.85rem;
+          color: var(--text-muted);
+          cursor: pointer;
+        }
+
+        .checkbox-group input {
+          margin-top: 0.25rem;
+          accent-color: var(--primary-color);
+        }
+
+        .notification {
+          padding: 0.8rem 1rem;
+          border-radius: 10px;
+          font-size: 0.9rem;
+          margin-bottom: 1.2rem;
+          display: none;
+          animation: fadeIn 0.3s ease-out;
+        }
+
+        .notification.info {
+          background: rgba(251, 191, 36, 0.08);
+          border: 1px solid rgba(251, 191, 36, 0.15);
+          color: var(--accent-color);
+        }
+
+        .notification.error {
+          background: rgba(239, 68, 68, 0.08);
+          border: 1px solid rgba(239, 68, 68, 0.15);
+          color: #f87171;
+        }
+
+        .notification.success {
+          background: rgba(52, 211, 153, 0.08);
+          border: 1px solid rgba(52, 211, 153, 0.15);
+          color: #34d399;
+        }
+
+        footer {
+          text-align: center;
+          padding: 2rem 1rem;
+          border-top: 1px solid rgba(239, 68, 68, 0.08);
+          color: var(--text-muted);
+          font-size: 0.8rem;
+          letter-spacing: 1px;
+          margin-top: auto;
+          background: rgba(11, 3, 3, 0.5);
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-5px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      </style>
+    </head>
+    <body>
+      <header>
+        <h1>✿ Poemas al Viento ✿</h1>
+        <p>EL PECADO TEATRO &bull; ELPECADO.AR</p>
+      </header>
+
+      <div class="main-container">
+        <!-- Lado Izquierdo: Presentación -->
+        <div class="presentation-side">
+          <h2>Sobre el Proyecto</h2>
+          <p>
+            "Poemas al Viento" es una innovadora intervención artística y digital impulsada por <strong>El Pecado Teatro</strong>. 
+            El proyecto conecta los aportes voluntarios de nuestro público con la difusión de la literatura local en formato tangible y el incentivo directo a los creadores a través de la tecnología moderna.
+          </p>
+
+          <div class="feature-card">
+            <div class="feature-icon">📟</div>
+            <div class="feature-text">
+              <h3>Impresión en Terminal Point Smart</h3>
+              <p>Al realizar una colaboración voluntaria (con tarjeta o QR), la terminal de pagoPoint Smart emite físicamente un poema seleccionado de forma aleatoria del catálogo del proyecto.</p>
+            </div>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">🔗</div>
+            <div class="feature-text">
+              <h3>Derechos de Autor Automatizados</h3>
+              <p>Cada impresión genera una recompensa directa e inmediata en tokens RFC (Reward Faucet Coin) liquidados inmutablemente mediante un contrato inteligente en la red Polygon.</p>
+            </div>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">✍️</div>
+            <div class="feature-text">
+              <h3>Licencia de Uso Ley 11.723</h3>
+              <p>El sistema opera bajo los términos de la Ley de Propiedad Intelectual en Argentina, garantizando que todo poema de autor vivo sea reproducido con su consentimiento digital formalizado.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lado Derecho: Acceso -->
+        <div class="form-card">
+          <h2 id="cardTitle">✍️ Portal de Artistas</h2>
+          
+          <div id="notif" class="notification"></div>
+
+          <form id="formAuth" onsubmit="handleAuth(event)">
+            <!-- Firma del artista -->
+            <div class="form-group">
+              <label for="penName">Tu Firma o Nombre Artístico</label>
+              <input type="text" id="penName" class="form-control" placeholder="Ej: Goyo.art3" required autocomplete="off">
+            </div>
+
+            <!-- Botón principal de login -->
+            <button type="submit" id="btnSubmit" class="btn">Continuar al Portal</button>
+
+            <!-- Sección de Registro (oculta inicialmente) -->
+            <div id="registerSection" class="register-section">
+              <h3 style="font-size: 1.1rem; color: #fff; margin-bottom: 1.2rem; font-family: 'Playfair Display', serif;">
+                Completar Firma de Contrato de Licencia
+              </h3>
+
+              <div class="form-group">
+                <label for="legalName">Nombre Completo (Legal)</label>
+                <input type="text" id="legalName" class="form-control" placeholder="Ej: Gregorio Martín">
+              </div>
+
+              <div class="form-group">
+                <label for="cuitCuil">CUIT / CUIL (Formato: XX-XXXXXXXX-X)</label>
+                <input type="text" id="cuitCuil" class="form-control" placeholder="Ej: 20-34567890-9" pattern="\\d{2}-\\d{8}-\\d{1}" title="Formato requerido: XX-XXXXXXXX-X">
+              </div>
+
+              <div class="form-group">
+                <label for="wallet">Wallet EVM (Recibir regalías RFC en Polygon)</label>
+                <input type="text" id="wallet" class="form-control" placeholder="Ej: 0x..." pattern="0x[a-fA-F0-9]{40}" title="Dirección de 42 caracteres hexadecimales que inicie con 0x">
+              </div>
+
+              <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div>
+                  <label for="pricePerUse">Regalía (RFC / Impresión)</label>
+                  <input type="number" id="pricePerUse" class="form-control" value="1" min="1" step="1">
+                </div>
+                <div>
+                  <label for="nationality">Residencia / Nacionalidad</label>
+                  <select id="nationality" class="form-control">
+                    <option value="Argentino">Argentino / Residente</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Contrato legal en scrollable visor -->
+              <div class="contract-viewer">
+                <h3>CONTRATO DE LICENCIA DE USO DE OBRA POÉTICA</h3>
+                <p><strong>Objeto:</strong> El autor firmante otorga a El Pecado Teatro una licencia de uso no exclusiva para la reproducción de sus obras en tickets de venta e impresiones térmicas emitidas por terminales Point Smart.</p>
+                <br>
+                <p><strong>Remuneración:</strong> El editor pagará al autor de forma automática la tarifa en tokens Reward Faucet Coin (RFC) por cada impresión realizada, transferida directamente al wallet digital proporcionado.</p>
+                <br>
+                <p><strong>Derechos:</strong> El autor mantiene la propiedad intelectual total y puede dar de baja su obra cuando lo desee mediante comunicación. Las partes se someten a la jurisdicción de la Ley N° 11.723 de Propiedad Intelectual en la República Argentina.</p>
+                <br>
+                <p><strong>Moderación:</strong> El editor se reserva el derecho de retirar de la cola de impresión cualquier obra que resulte inapropiada o contraria a las pautas éticas editoriales.</p>
+              </div>
+
+              <div class="checkbox-group">
+                <input type="checkbox" id="acceptTerms">
+                <label for="acceptTerms">
+                  Declaro bajo juramento ser residente argentino y acepto los términos de esta licencia y moderación editorial.
+                </label>
+              </div>
+
+              <button type="button" id="btnRegister" onclick="handleRegister()" class="btn" style="background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-hover) 100%); color: #0b0303;">
+                Firmar Contrato y Registrarse
+              </button>
+
+              <button type="button" onclick="cancelRegistration()" class="btn btn-secondary" style="margin-top: 0.6rem;">
+                Volver
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <footer>
+        EL PECADO TEATRO &bull; TODOS LOS DERECHOS RESERVADOS &bull; LEY 11.723 ARGENTINA
+      </footer>
+
+      <script>
+        const notif = document.getElementById('notif');
+        const registerSection = document.getElementById('registerSection');
+        const penNameInput = document.getElementById('penName');
+        const btnSubmit = document.getElementById('btnSubmit');
+        const cardTitle = document.getElementById('cardTitle');
+
+        function showNotif(type, message) {
+          notif.className = 'notification ' + type;
+          notif.textContent = message;
+          notif.style.display = 'block';
+          setTimeout(() => {
+            notif.style.display = 'none';
+          }, 6000);
+        }
+
+        async function handleAuth(event) {
+          event.preventDefault();
+          const penName = penNameInput.value.trim();
+          if (!penName) return;
+
+          btnSubmit.disabled = true;
+          btnSubmit.textContent = 'Verificando...';
+
+          try {
+            const res = await fetch('/api/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ penName })
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error al conectar con el servidor');
+
+            if (data.success) {
+              showNotif('success', 'Sesión iniciada con éxito. Redirigiendo...');
+              setTimeout(() => {
+                window.location.href = '/artist';
+              }, 1200);
+            } else if (data.notRegistered) {
+              // Mostrar sección de registro y contrato
+              showNotif('info', 'Firma no encontrada. Por favor, completa tu registro y firma el contrato digital.');
+              cardTitle.textContent = '🖋️ Firmar Contrato Digital';
+              btnSubmit.style.display = 'none';
+              penNameInput.disabled = true;
+              registerSection.classList.add('active');
+              
+              // Ajustar requerimientos de campos
+              document.getElementById('legalName').required = true;
+              document.getElementById('cuitCuil').required = true;
+              document.getElementById('wallet').required = true;
+            }
+          } catch (err) {
+            showNotif('error', err.message);
+          } finally {
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = 'Continuar al Portal';
+          }
+        }
+
+        async function handleRegister() {
+          const penName = penNameInput.value.trim();
+          const legalName = document.getElementById('legalName').value.trim();
+          const cuitCuil = document.getElementById('cuitCuil').value.trim();
+          const wallet = document.getElementById('wallet').value.trim();
+          const pricePerUse = document.getElementById('pricePerUse').value;
+          const nationality = document.getElementById('nationality').value;
+          const acceptTerms = document.getElementById('acceptTerms').checked;
+
+          if (!legalName || !cuitCuil || !wallet || !pricePerUse) {
+            showNotif('error', 'Por favor completa todos los campos del registro.');
+            return;
+          }
+
+          if (!acceptTerms) {
+            showNotif('error', 'Debes aceptar los términos y condiciones del contrato para continuar.');
+            return;
+          }
+
+          const btnRegister = document.getElementById('btnRegister');
+          btnRegister.disabled = true;
+          btnRegister.textContent = 'Firmando Contrato...';
+
+          try {
+            const res = await fetch('/api/register-author', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                penName,
+                legalName,
+                cuitCuil,
+                wallet,
+                pricePerUse,
+                nationality,
+                acceptedTerms: acceptTerms
+              })
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error al registrar el autor');
+
+            showNotif('success', '¡Contrato firmado y registro completado con éxito! Redirigiendo...');
+            setTimeout(() => {
+              window.location.href = '/artist';
+            }, 1500);
+          } catch (err) {
+            showNotif('error', err.message);
+            btnRegister.disabled = false;
+            btnRegister.textContent = 'Firmar Contrato y Registrarse';
+          }
+        }
+
+        function cancelRegistration() {
+          registerSection.classList.remove('active');
+          btnSubmit.style.display = 'block';
+          penNameInput.disabled = false;
+          cardTitle.textContent = '✍️ Portal de Artistas';
+          
+          document.getElementById('legalName').required = false;
+          document.getElementById('cuitCuil').required = false;
+          document.getElementById('wallet').required = false;
+        }
+      </script>
+    </body>
+    </html>
+  `);
+};
+
+app.get('/', servePresentationPage);
+app.get('/presentacion', servePresentationPage);
+
+// Panel del Artista (Espacio Privado)
+app.get('/artist', (req, res) => {
+  const authorName = getAuthorFromCookie(req);
+  if (!authorName) {
+    return res.redirect('/presentacion');
+  }
+
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Panel de Artista - Poemas al Viento</title>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+      <style>
+        :root {
+          --bg-color: #0b0303;
+          --card-bg: rgba(22, 10, 10, 0.7);
+          --border-color: rgba(239, 68, 68, 0.15);
+          --text-color: #fbecec;
+          --text-muted: #cda2a2;
+          --primary-color: #ef4444;
+          --primary-hover: #dc2626;
+          --accent-color: #fbbf24;
+          --success-color: #34d399;
+          --error-color: #f87171;
+        }
+
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+        }
+
+        body {
+          font-family: 'Outfit', sans-serif;
+          background-color: var(--bg-color);
+          background-image: 
+            radial-gradient(circle at 10% 20%, rgba(239, 68, 68, 0.1) 0%, transparent 40%),
+            radial-gradient(circle at 90% 80%, rgba(251, 191, 36, 0.03) 0%, transparent 40%);
+          color: var(--text-color);
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          line-height: 1.6;
+        }
+
+        nav {
+          background: rgba(11, 3, 3, 0.85);
+          backdrop-filter: blur(12px);
+          border-bottom: 1px solid var(--border-color);
+          padding: 1rem 2rem;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          position: sticky;
+          top: 0;
+          z-index: 100;
+        }
+
+        nav .logo {
+          font-family: 'Playfair Display', serif;
+          font-size: 1.5rem;
+          font-weight: 700;
+          color: #fff;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          text-decoration: none;
+        }
+
+        nav .logo span {
+          color: var(--primary-color);
+        }
+
+        nav .user-actions {
+          display: flex;
+          align-items: center;
+          gap: 1.2rem;
+        }
+
+        .pen-name-badge {
+          background: rgba(239, 68, 68, 0.1);
+          border: 1px solid rgba(239, 68, 68, 0.25);
+          color: #ff8b8b;
+          padding: 0.35rem 0.9rem;
+          border-radius: 20px;
+          font-size: 0.9rem;
+          font-weight: 600;
+        }
+
+        .btn-logout {
+          background: transparent;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          color: var(--text-muted);
+          padding: 0.35rem 0.9rem;
+          border-radius: 20px;
+          font-size: 0.85rem;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .btn-logout:hover {
+          border-color: var(--primary-color);
+          color: #fff;
+          background: rgba(239, 68, 68, 0.05);
+        }
+
+        .container {
+          max-width: 1200px;
+          margin: 2rem auto;
+          padding: 0 1.5rem;
+          flex: 1;
+          width: 100%;
+        }
+
+        .artist-welcome {
+          margin-bottom: 2rem;
+        }
+
+        .artist-welcome h2 {
+          font-family: 'Playfair Display', serif;
+          font-size: 2.2rem;
+          color: #fff;
+          margin-bottom: 0.2rem;
+        }
+
+        .artist-welcome p {
+          color: var(--text-muted);
+          font-size: 1rem;
+        }
+
+        .top-cards-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 2rem;
+          margin-bottom: 2.5rem;
+        }
+
+        @media (max-width: 768px) {
+          .top-cards-grid {
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+          }
+        }
+
+        .card {
+          background: var(--card-bg);
+          backdrop-filter: blur(16px);
+          border: 1px solid var(--border-color);
+          border-radius: 20px;
+          padding: 1.8rem;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+        }
+
+        .card h3 {
+          font-family: 'Playfair Display', serif;
+          font-size: 1.35rem;
+          margin-bottom: 1.2rem;
+          color: #fff;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .info-item {
+          display: flex;
+          justify-content: space-between;
+          padding: 0.7rem 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+          font-size: 0.95rem;
+        }
+
+        .info-item:last-child {
+          border-bottom: none;
+        }
+
+        .info-label {
+          color: var(--text-muted);
+        }
+
+        .info-value {
+          font-weight: 600;
+          color: #fff;
+        }
+
+        .balance-amount {
+          font-size: 2.8rem;
+          font-weight: 800;
+          color: var(--accent-color);
+          text-shadow: 0 0 20px rgba(251, 191, 36, 0.25);
+          margin: 0.5rem 0;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .balance-symbol {
+          font-size: 1.3rem;
+          font-weight: 600;
+          color: var(--text-muted);
+        }
+
+        .main-grid {
+          display: grid;
+          grid-template-columns: 1.2fr 0.8fr;
+          gap: 2rem;
+        }
+
+        @media (max-width: 992px) {
+          .main-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        .table-container {
+          overflow-x: auto;
+          margin-top: 1rem;
+        }
+
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          text-align: left;
+          font-size: 0.92rem;
+        }
+
+        th {
+          padding: 0.8rem;
+          color: var(--primary-color);
+          border-bottom: 2px solid var(--border-color);
+          font-weight: 600;
+        }
+
+        td {
+          padding: 0.8rem;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+          color: var(--text-muted);
+        }
+
+        tr:hover td {
+          color: #fff;
+          background: rgba(255, 255, 255, 0.01);
+        }
+
+        .btn {
+          display: inline-block;
+          width: 100%;
+          padding: 0.75rem;
+          background: linear-gradient(135deg, var(--primary-color) 0%, #b91c1c 100%);
+          border: none;
+          border-radius: 10px;
+          color: white;
+          font-size: 0.95rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s;
+          text-align: center;
+          outline: none;
+          box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);
+        }
+
+        .btn:hover {
+          box-shadow: 0 6px 18px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-success {
+          background: linear-gradient(135deg, var(--success-color) 0%, #059669 100%);
+          box-shadow: 0 4px 12px rgba(52, 211, 153, 0.15);
+        }
+
+        .btn-success:hover {
+          box-shadow: 0 6px 18px rgba(52, 211, 153, 0.3);
+        }
+
+        .form-group {
+          margin-bottom: 1rem;
+        }
+
+        .form-group label {
+          display: block;
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          margin-bottom: 0.3rem;
+          font-weight: 600;
+          text-transform: uppercase;
+        }
+
+        .form-control {
+          width: 100%;
+          padding: 0.7rem 0.9rem;
+          border-radius: 8px;
+          border: 1px solid var(--border-color);
+          background: rgba(0, 0, 0, 0.4);
+          color: white;
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.92rem;
+          outline: none;
+        }
+
+        .form-control:focus {
+          border-color: var(--primary-color);
+        }
+
+        .badge-status {
+          padding: 0.2rem 0.6rem;
+          border-radius: 12px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          display: inline-block;
+        }
+
+        .badge-status.success {
+          background: rgba(52, 211, 153, 0.12);
+          color: var(--success-color);
+          border: 1px solid rgba(52, 211, 153, 0.2);
+        }
+
+        .badge-status.simulated {
+          background: rgba(251, 191, 36, 0.12);
+          color: var(--accent-color);
+          border: 1px solid rgba(251, 191, 36, 0.2);
+        }
+
+        .toast {
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          background: #1c0606;
+          border-left: 4px solid var(--primary-color);
+          color: white;
+          padding: 0.9rem 1.4rem;
+          border-radius: 8px;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+          display: none;
+          z-index: 1000;
+          animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+          from { transform: translateY(100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+
+        footer {
+          text-align: center;
+          padding: 2rem 1rem;
+          border-top: 1px solid rgba(239, 68, 68, 0.08);
+          color: var(--text-muted);
+          font-size: 0.8rem;
+          letter-spacing: 1px;
+          margin-top: 3rem;
+          background: rgba(11, 3, 3, 0.5);
+        }
+      </style>
+    </head>
+    <body>
+      <nav>
+        <a href="/presentacion" class="logo">
+          ✿ <span>Poemas al Viento</span>
+        </a>
+        <div class="user-actions">
+          <span class="pen-name-badge">✍️ Firma: ${authorName}</span>
+          <button onclick="handleLogout()" class="btn-logout">Cerrar Sesión</button>
+        </div>
+      </nav>
+
+      <div class="container">
+        <div class="artist-welcome">
+          <h2>Espacio del Creador</h2>
+          <p>Supervisa tus obras publicadas, controla tus regalías RFC e inscribe nuevos poemas en la antología digital.</p>
+        </div>
+
+        <div class="top-cards-grid">
+          <!-- CARD 1: PERFIL & CONTRATO -->
+          <div class="card">
+            <h3>📄 Contrato de Licencia</h3>
+            <div class="info-item">
+              <span class="info-label">Nombre Legal</span>
+              <span class="info-value" id="profLegalName">Cargando...</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">CUIT / CUIL</span>
+              <span class="info-value" id="profCuitCuil">Cargando...</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Nacionalidad</span>
+              <span class="info-value" id="profNationality">Cargando...</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Estado de Licencia</span>
+              <span class="info-value">
+                <span class="badge-status success" style="font-size: 0.8rem;" id="profContractStatus">Activo (Ley 11.723)</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- CARD 2: BILLETERA & RFC -->
+          <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <h3>🪙 Mi Billetera Digital</h3>
+              <div style="font-size: 0.85rem; color: var(--text-muted); font-family: monospace; word-break: break-all; margin-bottom: 0.8rem;" id="profWallet">
+                Cargando...
+              </div>
+            </div>
+            <div>
+              <span class="info-label">Saldo Acumulado</span>
+              <div class="balance-amount">
+                <span id="profBalance">0.00</span>
+                <span class="balance-symbol">RFC</span>
+              </div>
+              <span style="font-size: 0.75rem; color: var(--text-muted);">
+                * Liquidado al instante tras cada impresión en la terminal física.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="main-grid">
+          <!-- SECCIÓN IZQUIERDA: MIS POEMAS -->
+          <div>
+            <div class="card" style="margin-bottom: 2rem;">
+              <h3>📚 Mis Obras en la Ticketera</h3>
+              <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 1rem;">
+                Estas son tus obras cargadas actualmente en el sistema que se imprimen aleatoriamente en el local.
+              </p>
+              
+              <div class="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Título del Poema</th>
+                      <th style="text-align: center;">Impresiones</th>
+                      <th style="text-align: right;">Regalías Totales</th>
+                      <th style="text-align: right;">Tarifa</th>
+                    </tr>
+                  </thead>
+                  <tbody id="poemsTableBody">
+                    <tr>
+                      <td colspan="4" style="text-align: center; padding: 2rem;">Cargando tus poemas...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- SECCIÓN: REGISTRO DE TRANSACCIONES BLOCKCHAIN -->
+            <div class="card">
+              <h3>🔗 Payouts Blockchain (Txs)</h3>
+              <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 1rem;">
+                Historial de liquidaciones inmutables de Reward Faucet Coin (RFC) enviadas a tu billetera.
+              </p>
+              
+              <div class="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Obra</th>
+                      <th style="text-align: right;">Monto</th>
+                      <th>Estado</th>
+                      <th>Hash de Transacción</th>
+                    </tr>
+                  </thead>
+                  <tbody id="txsTableBody">
+                    <tr>
+                      <td colspan="5" style="text-align: center; padding: 2rem;">Cargando historial...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECCIÓN DERECHA: SUBIR POEMA -->
+          <div>
+            <div class="card">
+              <h3>📝 Publicar Nueva Obra</h3>
+              <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 1.2rem;">
+                Inscribe una nueva poesía en la ticketera. Tu obra estará disponible para imprimirse inmediatamente tras enviarse.
+              </p>
+
+              <form id="formUploadPoem" onsubmit="uploadPoem(event)">
+                <div class="form-group">
+                  <label>Firma del Creador (Fija)</label>
+                  <input type="text" class="form-control" value="${authorName}" disabled style="opacity: 0.6;">
+                </div>
+
+                <div class="form-group">
+                  <label for="poemTitle">Título del Poema</label>
+                  <input type="text" id="poemTitle" class="form-control" placeholder="Ej: Romance de Otoño" required>
+                </div>
+
+                <div class="form-group">
+                  <label for="poemContent">Contenido (Límite estricto de 400 caracteres)</label>
+                  <textarea id="poemContent" class="form-control" rows="8" maxlength="400" placeholder="Escribe los versos aquí..." required oninput="updateCharCounter()"></textarea>
+                  <div style="text-align: right; font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;" id="charCounter">
+                    0 / 400
+                  </div>
+                </div>
+
+                <button type="submit" id="btnUpload" class="btn btn-success">
+                  Publicar Obra en el Sistema
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="toast" class="toast"></div>
+
+      <footer>
+        EL PECADO TEATRO &bull; TODOS LOS DERECHOS RESERVADOS &bull; LEY 11.723 ARGENTINA
+      </footer>
+
+      <script>
+        const toast = document.getElementById('toast');
+
+        function showToast(message) {
+          toast.textContent = message;
+          toast.style.display = 'block';
+          setTimeout(() => {
+            toast.style.display = 'none';
+          }, 4000);
+        }
+
+        function updateCharCounter() {
+          const text = document.getElementById('poemContent').value;
+          document.getElementById('charCounter').textContent = text.length + ' / 400';
+        }
+
+        async function handleLogout() {
+          try {
+            await fetch('/api/logout', { method: 'POST' });
+            showToast('Sesión cerrada correctamente. Redirigiendo...');
+            setTimeout(() => {
+              window.location.href = '/presentacion';
+            }, 1000);
+          } catch (err) {
+            showToast('Error al cerrar sesión');
+          }
+        }
+
+        async function loadArtistData() {
+          try {
+            const res = await fetch('/api/artist-data');
+            if (res.status === 401) {
+              window.location.href = '/presentacion';
+              return;
+            }
+            if (!res.ok) throw new Error('Error al cargar datos del artista');
+
+            const data = await res.json();
+            
+            // 1. Rellenar Perfil
+            document.getElementById('profLegalName').textContent = data.profile.legalName;
+            document.getElementById('profCuitCuil').textContent = data.profile.cuitCuil;
+            document.getElementById('profNationality').textContent = data.profile.nationality;
+            document.getElementById('profWallet').textContent = data.profile.wallet;
+            document.getElementById('profBalance').textContent = data.walletBalance;
+
+            // Fecha formateada del contrato
+            if (data.profile.acceptedDate) {
+              const contractDate = new Date(data.profile.acceptedDate).toLocaleDateString('es-AR');
+              document.getElementById('profContractStatus').textContent = 'Firmado: ' + contractDate;
+            }
+
+            // 2. Rellenar Tabla de Poemas
+            const poemsTableBody = document.getElementById('poemsTableBody');
+            poemsTableBody.innerHTML = '';
+            
+            if (data.poems.length === 0) {
+              poemsTableBody.innerHTML = \`
+                <tr>
+                  <td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                    No tienes poemas publicados en el sistema todavía.
+                  </td>
+                </tr>
+              \`;
+            } else {
+              data.poems.forEach(poem => {
+                const totalRoyalties = (poem.prints * poem.price).toFixed(2);
+                const row = document.createElement('tr');
+                row.innerHTML = \`
+                  <td style="font-weight: 600; color: #fff;">\${poem.title}</td>
+                  <td style="text-align: center; font-family: monospace; font-weight: bold;">\${poem.prints}</td>
+                  <td style="text-align: right; color: var(--success-color); font-weight: bold; font-family: monospace;">\${totalRoyalties} RFC</td>
+                  <td style="text-align: right; color: var(--accent-color); font-weight: bold; font-family: monospace;">\${poem.price} RFC</td>
+                \`;
+                poemsTableBody.appendChild(row);
+              });
+            }
+
+            // 3. Rellenar Tabla de Transacciones
+            const txsTableBody = document.getElementById('txsTableBody');
+            txsTableBody.innerHTML = '';
+
+            if (data.blockchainTxs.length === 0) {
+              txsTableBody.innerHTML = \`
+                <tr>
+                  <td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                    No se registran pagos de regalías en esta sesión todavía.
+                  </td>
+                </tr>
+              \`;
+            } else {
+              data.blockchainTxs.forEach(tx => {
+                const date = new Date(tx.timestamp).toLocaleString('es-AR');
+                const badgeClass = tx.isSimulated ? 'badge-status simulated' : 'badge-status success';
+                const badgeLabel = tx.isSimulated ? 'Simulado' : 'Confirmado';
+                const shortHash = tx.txHash.substring(0, 10) + '...' + tx.txHash.substring(tx.txHash.length - 8);
+                
+                const hashHtml = tx.isSimulated 
+                  ? \`<span style="font-family: monospace;" title="\${tx.txHash}">\${shortHash}</span>\`
+                  : \`<a href="https://amoy.polygonscan.com/tx/\${tx.txHash}" target="_blank" style="font-family: monospace; color: var(--accent-color); text-decoration: none;" title="Explorar transacción Polygonscan">\${shortHash} ↗</a>\`;
+
+                const row = document.createElement('tr');
+                row.innerHTML = \`
+                  <td>\${date}</td>
+                  <td style="font-style: italic; color: #fff;">\${tx.filename.replace('.txt', '')}</td>
+                  <td style="text-align: right; color: var(--success-color); font-weight: bold;">\${tx.amount} RFC</td>
+                  <td><span class="\${badgeClass}">\${badgeLabel}</span></td>
+                  <td>\${hashHtml}</td>
+                \`;
+                txsTableBody.appendChild(row);
+              });
+            }
+          } catch (err) {
+            showToast(err.message);
+          }
+        }
+
+        async function uploadPoem(event) {
+          event.preventDefault();
+          const title = document.getElementById('poemTitle').value.trim();
+          const content = document.getElementById('poemContent').value.trim();
+          const authorName = "${authorName}";
+
+          if (!title || !content) {
+            showToast('Por favor completa el título y el contenido.');
+            return;
+          }
+
+          const btnUpload = document.getElementById('btnUpload');
+          btnUpload.disabled = true;
+          btnUpload.textContent = 'Publicando...';
+
+          try {
+            const res = await fetch('/api/upload-poem', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title, content, authorName })
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error al subir el poema');
+
+            showToast('¡Poema publicado con éxito en la antología!');
+            document.getElementById('formUploadPoem').reset();
+            document.getElementById('charCounter').textContent = '0 / 400';
+            
+            // Recargar datos para ver la nueva obra
+            loadArtistData();
+          } catch (err) {
+            showToast(err.message);
+          } finally {
+            btnUpload.disabled = false;
+            btnUpload.textContent = 'Publicar Obra en el Sistema';
+          }
+        }
+
+        // Carga de datos inicial
+        loadArtistData();
+      </script>
+    </body>
+    </html>
+  `);
+});
+
 // Dashboard Web Premium
-app.get('/', async (req, res) => {
+app.get('/dashboard', (req, res) => {
+  res.redirect('/admin');
+});
+app.get('/admin', async (req, res) => {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   const hasToken = accessToken && !accessToken.includes('tu_access_token');
   const hasTerminal = process.env.MP_TERMINAL_ID && !process.env.MP_TERMINAL_ID.includes('tu_terminal_id');
@@ -805,105 +2090,16 @@ app.get('/', async (req, res) => {
         <div id="tab-autores" class="tab-content">
           <div class="grid">
             
-            <!-- TARJETA SUPERIOR SPLIT: CONTRATO DIGITAL & REGISTRO -->
-            <div class="card full-width">
-              <h2>🖋️ Licencia Digital de Obra Poética y Registro de Autores</h2>
-              <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem;">
-                Acepta los términos del contrato de forma digital para registrar tu firma de autor, subir tus poemas y definir tu tarifa de regalías en tokens RFC.
+            <!-- INFORMACIÓN DE REGISTROS -->
+            <div class="card full-width" style="border-color: rgba(192, 132, 252, 0.2); background: rgba(192, 132, 252, 0.02);">
+              <h2 style="font-family: 'Playfair Display', serif; color: #fff;">👥 Portal de Artistas Separado</h2>
+              <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">
+                El registro de firmas de autor, la aceptación digital de contratos (Ley N° 11.723) y la publicación de nuevas obras poéticas se han trasladado a un portal exclusivo para artistas para una mejor experiencia de usuario.
               </p>
-              
-              <div class="split-grid">
-                <!-- Visor del contrato digital -->
-                <div>
-                  <div class="contract-viewer">
-                    <h3>📄 CONTRATO DE LICENCIA DE USO DE OBRA POÉTICA</h3>
-                    <p style="margin-bottom: 0.8rem;"><strong>Entre:</strong> El autor firmante (en adelante, "EL AUTOR") y <strong>El Pecado Teatro</strong> (en adelante, "EL EDITOR").</p>
-                    <p style="margin-bottom: 0.8rem;"><strong>1. Objeto:</strong> EL AUTOR otorga a EL EDITOR una licencia no exclusiva para reproducir sus obras poéticas en tickets de compra emitidos por comercios mediante sistemas digitales.</p>
-                    <p style="margin-bottom: 0.8rem;"><strong>2. Alcance:</strong> La reproducción será parcial o completa del poema en formato impreso en tickets, distribuida de manera automática y aleatoria.</p>
-                    <p style="margin-bottom: 0.8rem;"><strong>3. Remuneración (Tokens RFC):</strong> EL EDITOR abonará a EL AUTOR el precio por uso acordado en la moneda digital <strong>Reward Faucet Coin (RFC)</strong> de forma automatizada por cada impresión confirmada.</p>
-                    <p style="margin-bottom: 0.8rem;"><strong>4. Derechos:</strong> EL AUTOR conserva todos los derechos sobre su obra. La presente licencia no implica cesión de propiedad intelectual alguna y es revocable.</p>
-                    <p style="margin-bottom: 0.8rem; color: var(--error-color); font-weight: 600;"><strong>5. Moderación Editorial:</strong> La editorial se reserva el derecho a publicar y eliminar del sistema cualquier poema que pudiera ser considerado apología de prácticas ilegales o que vulneren derechos particulares y de colectivos.</p>
-                    <p style="margin-bottom: 0.8rem;"><strong>6. Jurisdicción:</strong> Las partes se someten a las leyes de la República Argentina. Se requiere identificación mediante CUIT/CUIL y residencia o nacionalidad argentina.</p>
-                  </div>
-                  
-                  <!-- Formulario de carga de poemas -->
-                  <div style="border-top: 1px solid var(--border-color); padding-top: 1.5rem;">
-                    <h3 style="margin-bottom: 0.8rem;">📝 Publicar Nueva Obra Poética</h3>
-                    <form id="formPoema">
-                      <div class="form-group">
-                        <label for="poemAuthorSelect">Selecciona tu Firma de Autor Registrada:</label>
-                        <select id="poemAuthorSelect" class="form-control" required>
-                          <option value="">-- Cargar Autores... --</option>
-                        </select>
-                      </div>
-                      
-                      <div class="form-group">
-                        <label for="poemTitle">Título del Poema:</label>
-                        <input type="text" id="poemTitle" class="form-control" placeholder="Ej: Poema de la Lluvia" required>
-                      </div>
-                      
-                      <div class="form-group">
-                        <label for="poemContent">Contenido del Poema (Límite estricto de 400 caracteres):</label>
-                        <textarea id="poemContent" class="form-control" rows="4" maxlength="400" oninput="actualizarContadorPoema()" placeholder="Escribe tu obra aquí..." required></textarea>
-                        <span id="charCounter" style="display: block; text-align: right; font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">0 / 400</span>
-                      </div>
-                      
-                      <button type="submit" class="btn" style="background: linear-gradient(135deg, var(--success-color) 0%, #059669 100%);">
-                        🚀 Publicar Obra en el Point Smart
-                      </button>
-                    </form>
-                  </div>
-                </div>
-
-                <!-- Formulario de Registro de Autores -->
-                <div>
-                  <h3 style="margin-bottom: 1rem;">✍️ Aceptar Contrato y Registrar Firma</h3>
-                  <form id="formRegistro">
-                    <div class="form-group">
-                      <label for="penName">Firma / Nombre Artístico (ej. Goyo.art3):</label>
-                      <input type="text" id="penName" class="form-control" placeholder="Ej: Goyo.art3" required>
-                    </div>
-                    
-                    <div class="form-group">
-                      <label for="legalName">Nombre Legal y Apellido Completo:</label>
-                      <input type="text" id="legalName" class="form-control" placeholder="Ej: Gregorio Martín" required>
-                    </div>
-                    
-                    <div class="form-group">
-                      <label for="cuitCuil">CUIT/CUIL Argentino (XX-XXXXXXXX-X):</label>
-                      <input type="text" id="cuitCuil" class="form-control" placeholder="Ej: 20-34567890-9" pattern="\\d{2}-\\d{8}-\\d{1}" title="Formato requerido: XX-XXXXXXXX-X" required>
-                    </div>
-                    
-                    <div class="form-group">
-                      <label for="wallet">Dirección Wallet EVM (Para recibir RFC en Amoy/Hardhat):</label>
-                      <input type="text" id="wallet" class="form-control" placeholder="Ej: 0x..." pattern="0x[a-fA-F0-9]{40}" title="Debe ser una dirección wallet EVM válida de 42 caracteres" required>
-                    </div>
-                    
-                    <div class="form-group">
-                      <label for="pricePerUse">Tarifa de Payout (RFC por cada impresión):</label>
-                      <input type="number" id="pricePerUse" class="form-control" value="1" min="1" step="1" required>
-                    </div>
-
-                    <div class="form-group">
-                      <label for="nationality">País de Residencia / Nacionalidad:</label>
-                      <select id="nationality" class="form-control" required>
-                        <option value="Argentino">Argentino / Residente Legal en Argentina</option>
-                      </select>
-                    </div>
-
-                    <div class="checkbox-group">
-                      <input type="checkbox" id="acceptTerms" required>
-                      <label for="acceptTerms">
-                        Declaro bajo juramento ser ciudadano argentino o residente legal, y acepto formalmente los términos del contrato de licencia y de moderación editorial.
-                      </label>
-                    </div>
-                    
-                    <button type="submit" class="btn">
-                      🖋️ Aceptar y Registrar
-                    </button>
-                  </form>
-                </div>
-              </div>
+              <a href="/presentacion" class="btn" style="width: auto; display: inline-block; padding: 0.6rem 1.5rem; font-size: 0.9rem; margin-top: 0; background: linear-gradient(135deg, var(--primary-color) 0%, #a855f7 100%);">
+                🔗 Ir al Portal de Artistas (Presentación / Login)
+              </a>
+            </div>
             </div>
 
             <!-- TARJETA: TABLA DE AUTORES Y SALDOS -->
@@ -1006,7 +2202,9 @@ app.get('/', async (req, res) => {
             tablaAutoresBody.innerHTML = '';
             
             const poemAuthorSelect = document.getElementById('poemAuthorSelect');
-            poemAuthorSelect.innerHTML = '<option value="">-- Selecciona tu Firma Autorizada --</option>';
+            if (poemAuthorSelect) {
+              poemAuthorSelect.innerHTML = '<option value="">-- Selecciona tu Firma Autorizada --</option>';
+            }
 
             const authorNames = Object.keys(data.authors);
             if (authorNames.length === 0) {
@@ -1038,14 +2236,16 @@ app.get('/', async (req, res) => {
                   <td style="padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: var(--primary-color);">\${author.wallet}</td>
                   <td style="padding: 0.8rem; text-align: right; font-weight: bold; color: var(--success-color);">\${author.pricePerUse} RFC</td>
                   <td style="padding: 0.8rem; text-align: right; font-family: monospace; font-weight: bold; color: #fff;">\${balance}</td>
-                \`;
+\`;
                 tablaAutoresBody.appendChild(row);
 
                 // Añadir al select
-                const option = document.createElement('option');
-                option.value = name;
-                option.textContent = name + ' (' + author.legalName + ')';
-                poemAuthorSelect.appendChild(option);
+                if (poemAuthorSelect) {
+                  const option = document.createElement('option');
+                  option.value = name;
+                  option.textContent = name + ' (' + author.legalName + ')';
+                  poemAuthorSelect.appendChild(option);
+                }
               });
             }
 
@@ -2037,6 +3237,111 @@ app.get('/api/author-portal-data', async (req, res) => {
   }
 });
 
+// Login de autor
+app.post('/api/login', async (req, res) => {
+  const { penName } = req.body;
+  if (!penName) {
+    return res.status(400).json({ error: 'Firma de autor requerida' });
+  }
+
+  try {
+    let registry = {};
+    if (fs.existsSync(REGISTRY_FILE)) {
+      registry = JSON.parse(await fs.promises.readFile(REGISTRY_FILE, 'utf8'));
+    }
+
+    const trimmedName = penName.trim();
+    if (registry[trimmedName]) {
+      res.setHeader('Set-Cookie', `author_session=${encodeURIComponent(trimmedName)}; Path=/; HttpOnly; Max-Age=2592000`);
+      return res.status(200).json({ success: true, message: 'Sesión iniciada' });
+    } else {
+      return res.status(200).json({ success: false, notRegistered: true, message: 'Autor no registrado' });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Logout de autor
+app.post('/api/logout', (req, res) => {
+  res.setHeader('Set-Cookie', 'author_session=; Path=/; HttpOnly; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+  return res.status(200).json({ success: true });
+});
+
+// Datos de artista autenticado
+app.get('/api/artist-data', async (req, res) => {
+  const authorName = getAuthorFromCookie(req);
+  if (!authorName) {
+    return res.status(401).json({ error: 'No autorizado' });
+  }
+
+  try {
+    let registry = {};
+    if (fs.existsSync(REGISTRY_FILE)) {
+      registry = JSON.parse(await fs.promises.readFile(REGISTRY_FILE, 'utf8'));
+    }
+
+    const profile = registry[authorName];
+    if (!profile) {
+      return res.status(404).json({ error: 'Autor no encontrado en el registro' });
+    }
+
+    // Leer poemas y filtrar los de este autor
+    const poemsDir = path.join(__dirname, '../poemas');
+    const poemsList = [];
+
+    let stats = {};
+    if (fs.existsSync(STATS_FILE)) {
+      stats = JSON.parse(await fs.promises.readFile(STATS_FILE, 'utf8'));
+    }
+
+    if (fs.existsSync(poemsDir)) {
+      const files = await fs.promises.readdir(poemsDir);
+      const txtFiles = files.filter(f => f.endsWith('.txt'));
+
+      for (const file of txtFiles) {
+        const content = await fs.promises.readFile(path.join(poemsDir, file), 'utf8');
+        const { title, author } = parsePoemMetadata(file, content);
+
+        if (author.trim().toLowerCase() === authorName.trim().toLowerCase()) {
+          const prints = stats[file] || 0;
+          poemsList.push({
+            filename: file,
+            title,
+            prints,
+            price: profile.pricePerUse
+          });
+        }
+      }
+    }
+
+    // Consultar balance
+    let walletBalance = '0.00';
+    if (profile.wallet) {
+      const wDetails = await getWalletDetails(profile.wallet);
+      walletBalance = wDetails.balance;
+    }
+
+    // Filtrar transacciones del autor
+    let txs = [];
+    if (fs.existsSync(BLOCKCHAIN_TXS_FILE)) {
+      const allTxs = JSON.parse(await fs.promises.readFile(BLOCKCHAIN_TXS_FILE, 'utf8'));
+      txs = allTxs.filter(tx => tx.author.trim().toLowerCase() === authorName.trim().toLowerCase());
+    }
+
+    return res.status(200).json({
+      authorName,
+      profile,
+      poems: poemsList,
+      walletBalance,
+      blockchainTxs: txs
+    });
+  } catch (err) {
+    console.error('[API] Error en artist-data:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // Registrar un autor
 app.post('/api/register-author', async (req, res) => {
   const { penName, legalName, cuitCuil, wallet, pricePerUse, nationality, acceptedTerms } = req.body;
@@ -2086,6 +3391,7 @@ app.post('/api/register-author', async (req, res) => {
     await fs.promises.writeFile(REGISTRY_FILE, JSON.stringify(registry, null, 2), 'utf8');
     console.log(`[API] Autor registrado con éxito: ${penName}`);
 
+    res.setHeader('Set-Cookie', `author_session=${encodeURIComponent(penName.trim())}; Path=/; HttpOnly; Max-Age=2592000`);
     return res.status(200).json({ success: true, message: 'Autor registrado correctamente' });
   } catch (error) {
     console.error('[API] Error al registrar autor:', error.message);
@@ -2099,6 +3405,11 @@ app.post('/api/upload-poem', async (req, res) => {
 
   if (!title || !content || !authorName) {
     return res.status(400).json({ error: 'Faltan campos obligatorios: título, contenido o autor' });
+  }
+
+  const sessionAuthor = getAuthorFromCookie(req);
+  if (!sessionAuthor || sessionAuthor.trim().toLowerCase() !== authorName.trim().toLowerCase()) {
+    return res.status(401).json({ error: 'No autorizado. La firma no coincide con tu sesión activa.' });
   }
 
   if (content.length > 400) {
