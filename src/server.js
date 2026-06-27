@@ -2718,15 +2718,15 @@ app.get('/admin', async (req, res) => {
           }
           
           let html = content;
-          html = html.replace(/{br}/g, '<br>');
-          html = html.replace(/{center}/g, '<div style="text-align: center;">');
-          html = html.replace(/{\/center}/g, '</div>');
-          html = html.replace(/{b}/g, '<strong>');
-          html = html.replace(/{\/b}/g, '</strong>');
-          html = html.replace(/{w}/g, '<span style="font-size: 1.15rem; font-weight: 800; display: inline-block;">');
-          html = html.replace(/{\/w}/g, '</span>');
-          html = html.replace(/{s}/g, '<span style="font-size: 0.8rem; opacity: 0.8; display: inline-block;">');
-          html = html.replace(/{\/s}/g, '</span>');
+          html = html.split('{br}').join('<br>');
+          html = html.split('{center}').join('<div style="text-align: center;">');
+          html = html.split('{/center}').join('</div>');
+          html = html.split('{b}').join('<strong>');
+          html = html.split('{/b}').join('</strong>');
+          html = html.split('{w}').join('<span style="font-size: 1.15rem; font-weight: 800; display: inline-block;">');
+          html = html.split('{/w}').join('</span>');
+          html = html.split('{s}').join('<span style="font-size: 0.8rem; opacity: 0.8; display: inline-block;">');
+          html = html.split('{/s}').join('</span>');
           
           return '<div style="background: #ffffff; color: #111827; padding: 1rem; border-radius: 4px; font-family: monospace; font-size: 0.82rem; line-height: 1.3; box-shadow: inset 0 0 10px rgba(0,0,0,0.1); border-left: 2px dashed #d1d5db; border-right: 2px dashed #d1d5db; margin-top: 0.5rem; text-align: left; max-height: 250px; overflow-y: auto; width: 100%;">' +
             html +
