@@ -1755,6 +1755,979 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
+// --- PORTAL DE ESCRITORES (/escritores) ---
+const AUTHOR_REGISTRY_FILE = path.join(__dirname, '../author_registry.json');
+
+function getAuthorFromCookie(req) {
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return null;
+  const cookies = cookieHeader.split(';').reduce((acc, c) => {
+    const [name, ...val] = c.trim().split('=');
+    acc[name] = val.join('=');
+    return acc;
+  }, {});
+  return cookies.author_session ? decodeURIComponent(cookies.author_session) : null;
+}
+
+async function getAuthorRegistry() {
+  try {
+    if (fs.existsSync(AUTHOR_REGISTRY_FILE)) {
+      const data = await fs.promises.readFile(AUTHOR_REGISTRY_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('Error leyendo registro de autores:', e);
+  }
+  return {};
+}
+
+async function saveAuthorRegistry(registry) {
+  try {
+    await fs.promises.writeFile(AUTHOR_REGISTRY_FILE, JSON.stringify(registry, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error guardando registro de autores:', e);
+  }
+}
+
+// APIs del Portal de Escritores
+app.post('/api/escritores/login', async (req, res) => {
+  const { penName } = req.body;
+  if (!penName) return res.status(400).json({ error: 'Firma artística requerida' });
+
+  const registry = await getAuthorRegistry();
+  const trimmedName = penName.trim();
+
+  if (registry[trimmedName]) {
+    res.cookie('author_session', encodeURIComponent(trimmedName), { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: false, path: '/' });
+    return res.json({ success: true, registered: true });
+  } else {
+    return res.json({ success: false, notRegistered: true });
+  }
+});
+
+app.post('/api/escritores/register', async (req, res) => {
+  const { penName, legalName, cuitCuil, wallet, pricePerUse, nationality, acceptedTerms } = req.body;
+  if (!penName || !legalName || !cuitCuil) {
+    return res.status(400).json({ error: 'Por favor completa los campos obligatorios' });
+  }
+  if (!acceptedTerms) {
+    return res.status(400).json({ error: 'Debes aceptar los términos de la licencia' });
+  }
+
+  const registry = await getAuthorRegistry();
+  const trimmedName = penName.trim();
+
+  registry[trimmedName] = {
+    legalName: legalName.trim(),
+    cuitCuil: cuitCuil.trim(),
+    wallet: wallet ? wallet.trim() : '',
+    pricePerUse: parseFloat(pricePerUse) || 1,
+    nationality: nationality || 'Argentino',
+    acceptedTerms: true,
+    createdAt: new Date().toISOString()
+  };
+
+  await saveAuthorRegistry(registry);
+  res.cookie('author_session', encodeURIComponent(trimmedName), { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: false, path: '/' });
+  return res.json({ success: true });
+});
+
+app.post('/api/escritores/logout', (req, res) => {
+  res.clearCookie('author_session', { path: '/' });
+  return res.json({ success: true });
+});
+
+app.get('/api/escritores/dashboard-data', async (req, res) => {
+  const authorName = getAuthorFromCookie(req);
+  if (!authorName) return res.status(401).json({ error: 'No autenticado' });
+
+  const registry = await getAuthorRegistry();
+  const authorData = registry[authorName] || { legalName: authorName, wallet: '', pricePerUse: 1 };
+
+  let stats = {};
+  try {
+    if (fs.existsSync(STATS_FILE)) {
+      stats = JSON.parse(await fs.promises.readFile(STATS_FILE, 'utf8'));
+    }
+  } catch (e) {}
+
+  let authorPoems = [];
+  let totalPrints = 0;
+  const poemsDir = path.join(__dirname, '../poemas');
+
+  try {
+    if (fs.existsSync(poemsDir)) {
+      const files = await fs.promises.readdir(poemsDir);
+      for (const file of files.filter(f => f.endsWith('.txt'))) {
+        const filePath = path.join(poemsDir, file);
+        const content = await fs.promises.readFile(filePath, 'utf8');
+        const meta = parsePoemMetadata(file, content);
+
+        if (meta.author.toLowerCase().trim() === authorName.toLowerCase().trim()) {
+          const prints = stats[file] || 0;
+          totalPrints += prints;
+          authorPoems.push({
+            file,
+            title: meta.title,
+            prints,
+            earnedRFC: prints * (authorData.pricePerUse || 1)
+          });
+        }
+      }
+    }
+  } catch (e) {}
+
+  const totalEarnedRFC = totalPrints * (authorData.pricePerUse || 1);
+
+  return res.json({
+    authorName,
+    authorData,
+    poems: authorPoems,
+    stats: {
+      totalPoems: authorPoems.length,
+      totalPrints,
+      totalEarnedRFC,
+      minWithdrawalThreshold: 10
+    }
+  });
+});
+
+app.post('/api/escritores/update-wallet', async (req, res) => {
+  const authorName = getAuthorFromCookie(req);
+  if (!authorName) return res.status(401).json({ error: 'No autenticado' });
+
+  const { wallet } = req.body;
+  if (!wallet || !wallet.startsWith('0x') || wallet.length !== 42) {
+    return res.status(400).json({ error: 'Dirección de billetera EVM no válida. Debe comenzar con 0x y tener 42 caracteres.' });
+  }
+
+  const registry = await getAuthorRegistry();
+  if (registry[authorName]) {
+    registry[authorName].wallet = wallet.trim();
+    await saveAuthorRegistry(registry);
+    return res.json({ success: true, message: 'Billetera vinculada con éxito' });
+  } else {
+    return res.status(404).json({ error: 'Autor no encontrado' });
+  }
+});
+
+app.post('/api/escritores/upload-poem', async (req, res) => {
+  const authorName = getAuthorFromCookie(req);
+  if (!authorName) return res.status(401).json({ error: 'No autenticado' });
+
+  const { title, content } = req.body;
+  if (!title || !content) {
+    return res.status(400).json({ error: 'Por favor ingresa el título y contenido del poema' });
+  }
+
+  try {
+    const poemsDir = path.join(__dirname, '../poemas');
+    if (!fs.existsSync(poemsDir)) {
+      await fs.promises.mkdir(poemsDir, { recursive: true });
+    }
+
+    const safeFilename = title.toLowerCase().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_') + '.txt';
+    const filePath = path.join(poemsDir, safeFilename);
+
+    const poemBody = `${title.trim()}\n\n${content.trim()}\n\n-- ${authorName}`;
+    await fs.promises.writeFile(filePath, poemBody, 'utf8');
+
+    return res.json({ success: true, message: '¡Poema publicado con éxito en el sistema!' });
+  } catch (e) {
+    return res.status(500).json({ error: 'Error al publicar poema: ' + e.message });
+  }
+});
+
+// Rutas de alias
+app.get('/presentacion', (req, res) => res.redirect('/escritores'));
+app.get('/artist', (req, res) => res.redirect('/escritores'));
+
+// RUTA PRINCIPAL DEL PORTAL DE ESCRITORES
+app.get('/escritores', (req, res) => {
+  const authorName = getAuthorFromCookie(req);
+
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Portal de Escritores - El Pecado Teatro</title>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+      <style>
+        :root {
+          --bg-color: #0b0303;
+          --card-bg: rgba(22, 10, 10, 0.75);
+          --border-color: rgba(239, 68, 68, 0.18);
+          --text-color: #fbecec;
+          --text-muted: #cda2a2;
+          --primary-color: #ef4444;
+          --primary-hover: #dc2626;
+          --accent-color: #fbbf24;
+          --success-color: #34d399;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+          font-family: 'Outfit', sans-serif;
+          background-color: var(--bg-color);
+          background-image: 
+            radial-gradient(circle at 10% 20%, rgba(239, 68, 68, 0.14) 0%, transparent 40%),
+            radial-gradient(circle at 90% 80%, rgba(251, 191, 36, 0.06) 0%, transparent 40%);
+          color: var(--text-color);
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          line-height: 1.6;
+        }
+
+        header {
+          padding: 2rem 1rem 1.5rem 1rem;
+          text-align: center;
+          border-bottom: 1px solid rgba(239, 68, 68, 0.1);
+          background: rgba(11, 3, 3, 0.6);
+          backdrop-filter: blur(10px);
+          position: relative;
+        }
+
+        header h1 {
+          font-family: 'Playfair Display', serif;
+          font-size: 2.6rem;
+          font-weight: 700;
+          background: linear-gradient(135deg, #fff 30%, #ef4444 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        header p {
+          color: var(--text-muted);
+          font-size: 1.05rem;
+          font-style: italic;
+        }
+
+        .user-bar {
+          position: absolute;
+          top: 1.5rem;
+          right: 2rem;
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+        }
+
+        @media (max-width: 768px) {
+          .user-bar { position: static; margin-top: 1rem; justify-content: center; }
+        }
+
+        .main-container {
+          max-width: 1050px;
+          margin: 2rem auto;
+          padding: 0 1.5rem;
+          flex: 1;
+          width: 100%;
+        }
+
+        /* Pestañas */
+        .nav-tabs {
+          display: flex;
+          justify-content: center;
+          gap: 0.8rem;
+          margin-bottom: 2rem;
+        }
+
+        .tab-btn {
+          padding: 0.85rem 1.8rem;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--border-color);
+          border-radius: 14px;
+          color: var(--text-muted);
+          font-family: 'Outfit', sans-serif;
+          font-weight: 600;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: all 0.25s ease;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .tab-btn:hover {
+          background: rgba(239, 68, 68, 0.1);
+          color: #fff;
+        }
+
+        .tab-btn.active {
+          background: linear-gradient(135deg, var(--primary-color) 0%, #b91c1c 100%);
+          border-color: var(--primary-color);
+          color: #fff;
+          box-shadow: 0 4px 20px rgba(239, 68, 68, 0.35);
+        }
+
+        .tab-content {
+          display: none;
+          animation: fadeIn 0.3s ease-out;
+        }
+
+        .tab-content.active { display: block; }
+
+        /* Tarjetas */
+        .card {
+          background: var(--card-bg);
+          backdrop-filter: blur(16px);
+          border: 1px solid var(--border-color);
+          border-radius: 20px;
+          padding: 2rem;
+          box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+          margin-bottom: 2rem;
+        }
+
+        .card h2 {
+          font-family: 'Playfair Display', serif;
+          font-size: 1.7rem;
+          color: #fff;
+          margin-bottom: 1.2rem;
+          display: flex;
+          align-items: center;
+          gap: 0.6rem;
+        }
+
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 1.2rem;
+          margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+          background: rgba(0, 0, 0, 0.4);
+          border: 1px solid rgba(255,255,255,0.06);
+          border-radius: 14px;
+          padding: 1.25rem;
+          text-align: center;
+        }
+
+        .stat-value {
+          font-size: 2.2rem;
+          font-weight: 800;
+          font-family: monospace;
+          color: var(--accent-color);
+          margin-top: 0.3rem;
+        }
+
+        .stat-label {
+          font-size: 0.85rem;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .form-group { margin-bottom: 1.2rem; }
+
+        .form-group label {
+          display: block;
+          font-size: 0.88rem;
+          color: var(--text-muted);
+          margin-bottom: 0.4rem;
+          font-weight: 600;
+        }
+
+        .form-control {
+          width: 100%;
+          padding: 0.85rem 1rem;
+          border-radius: 12px;
+          border: 1px solid var(--border-color);
+          background: rgba(0, 0, 0, 0.45);
+          color: white;
+          font-family: 'Outfit', sans-serif;
+          font-size: 1rem;
+          outline: none;
+          transition: all 0.2s;
+        }
+
+        .form-control:focus {
+          border-color: var(--primary-color);
+          box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+        }
+
+        .btn {
+          display: inline-block;
+          width: 100%;
+          padding: 0.9rem;
+          background: linear-gradient(135deg, var(--primary-color) 0%, #b91c1c 100%);
+          border: none;
+          border-radius: 12px;
+          color: white;
+          font-size: 1.05rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s;
+          text-align: center;
+        }
+
+        .btn:hover { transform: translateY(-1px); opacity: 0.95; }
+
+        .btn-secondary {
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: var(--text-muted);
+        }
+
+        .btn-secondary:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+
+        .btn-tutorial {
+          background: linear-gradient(135deg, var(--accent-color) 0%, #d97706 100%);
+          color: #0b0303;
+          font-weight: 700;
+          padding: 0.75rem 1.2rem;
+          font-size: 0.9rem;
+          border-radius: 12px;
+          border: none;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          transition: all 0.2s;
+        }
+
+        .btn-tutorial:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(251, 191, 36, 0.3); }
+
+        /* Visor de tutorial */
+        .tutorial-box {
+          display: none;
+          background: rgba(251, 191, 36, 0.05);
+          border: 1px solid rgba(251, 191, 36, 0.2);
+          border-radius: 16px;
+          padding: 1.5rem;
+          margin-top: 1.5rem;
+          animation: fadeIn 0.3s ease-out;
+        }
+
+        .tutorial-step {
+          display: flex;
+          gap: 1rem;
+          margin-bottom: 1.2rem;
+          align-items: flex-start;
+        }
+
+        .step-number {
+          background: var(--accent-color);
+          color: #0b0303;
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 800;
+          font-size: 0.9rem;
+          flex-shrink: 0;
+        }
+
+        .step-text h4 { color: #fff; margin-bottom: 0.2rem; font-size: 1rem; }
+        .step-text p { color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; }
+
+        .notification {
+          padding: 1rem 1.2rem;
+          border-radius: 12px;
+          font-size: 0.95rem;
+          margin-bottom: 1.5rem;
+          display: none;
+        }
+
+        .notification.success { background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.25); color: var(--success-color); }
+        .notification.error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #f87171; }
+        .notification.info { background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.25); color: var(--accent-color); }
+
+        /* Visor del contrato legal */
+        .contract-viewer {
+          background: rgba(0, 0, 0, 0.4);
+          border: 1px solid var(--border-color);
+          border-radius: 12px;
+          padding: 1.2rem;
+          max-height: 180px;
+          overflow-y: auto;
+          font-size: 0.85rem;
+          color: var(--text-muted);
+          line-height: 1.5;
+          margin-bottom: 1.2rem;
+        }
+
+        .contract-viewer h3 { color: #fff; font-family: 'Playfair Display', serif; margin-bottom: 0.5rem; text-align: center; }
+
+        footer {
+          text-align: center;
+          padding: 2rem 1rem;
+          border-top: 1px solid rgba(239, 68, 68, 0.08);
+          color: var(--text-muted);
+          font-size: 0.8rem;
+          margin-top: auto;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      </style>
+    </head>
+    <body>
+      <header>
+        <h1>✿ Poemas al Viento ✿</h1>
+        <p>PORTAL DE ESCRITORES &bull; ELPECADO.AR</p>
+
+        ${authorName ? `
+          <div class="user-bar">
+            <span style="font-size: 0.95rem; color: #fff;">✒️ <strong>${authorName}</strong></span>
+            <button onclick="handleLogout()" class="btn btn-secondary" style="width: auto; padding: 0.4rem 0.9rem; font-size: 0.85rem;">Cerrar Sesión</button>
+          </div>
+        ` : ''}
+      </header>
+
+      <div class="main-container">
+        <div id="globalNotif" class="notification"></div>
+
+        ${!authorName ? `
+          <!-- PANTALLA DE AUTENTICACIÓN / REGISTRO -->
+          <div style="max-width: 550px; margin: 2rem auto;" class="card">
+            <h2 id="authTitle">✍️ Acceso a Escritores</h2>
+            
+            <form id="formAuth" onsubmit="handleAuthSubmit(event)">
+              <div class="form-group">
+                <label for="penNameInput">Tu Firma o Nombre Artístico</label>
+                <input type="text" id="penNameInput" class="form-control" placeholder="Ej: Goyo.art3" required autocomplete="off">
+              </div>
+
+              <button type="submit" id="btnAuthSubmit" class="btn">Continuar al Portal</button>
+            </form>
+
+            <!-- Registro colapsable -->
+            <div id="registerSection" style="display: none; margin-top: 1.5rem; border-top: 1px dashed var(--border-color); padding-top: 1.5rem;">
+              <h3 style="font-family: 'Playfair Display', serif; color: #fff; margin-bottom: 1rem;">Completar Registro y Contrato Digital</h3>
+              
+              <div class="form-group">
+                <label for="regLegalName">Nombre Completo (Legal)</label>
+                <input type="text" id="regLegalName" class="form-control" placeholder="Ej: Gregorio Martín">
+              </div>
+
+              <div class="form-group">
+                <label for="regCuit">CUIT / CUIL (Formato: XX-XXXXXXXX-X)</label>
+                <input type="text" id="regCuit" class="form-control" placeholder="Ej: 20-34567890-9" pattern="\\d{2}-\\d{8}-\\d{1}">
+              </div>
+
+              <div class="form-group">
+                <label for="regWallet">Billetera Virtual (Opcional por ahora)</label>
+                <input type="text" id="regWallet" class="form-control" placeholder="Ej: 0x... (EVM / Polygon)">
+              </div>
+
+              <div class="contract-viewer">
+                <h3>CONTRATO DE LICENCIA Y REGALÍAS</h3>
+                <p>El autor otorga a El Pecado Teatro licencia de uso no exclusiva para la reproducción térmica de sus poemas en tickets emitidos por terminales Point Smart.</p>
+                <br>
+                <p>Por cada impresión realizada, el sistema acumulará recompensas en tokens RFC acreditables en la billetera virtual informada.</p>
+              </div>
+
+              <div style="display: flex; gap: 0.6rem; margin-bottom: 1.2rem; font-size: 0.85rem; color: var(--text-muted);">
+                <input type="checkbox" id="regAcceptTerms" style="accent-color: var(--primary-color);">
+                <label for="regAcceptTerms">Declaro bajo juramento ser residente argentino y acepto las pautas editoriales y legales.</label>
+              </div>
+
+              <button type="button" onclick="handleRegisterSubmit()" class="btn" style="background: linear-gradient(135deg, var(--accent-color) 0%, #d97706 100%); color: #0b0303;">Firmar y Crear Cuenta</button>
+            </div>
+          </div>
+        ` : `
+          <!-- DASHBOARD CON PESTAÑAS DE ESCRITORES -->
+          <div class="nav-tabs">
+            <button class="tab-btn active" onclick="switchTab('tab-poemas')">📜 Poemas y Estadísticas</button>
+            <button class="tab-btn" onclick="switchTab('tab-cargar')">✍️ Cargar Poema</button>
+            <button class="tab-btn" onclick="switchTab('tab-recompensa')">🏆 Recompensa RFC</button>
+          </div>
+
+          <!-- PESTAÑA 1: POEMAS -->
+          <div id="tab-poemas" class="tab-content active">
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-label">Obras Publicadas</div>
+                <div class="stat-value" id="statPoemsCount">0</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Total Impresiones</div>
+                <div class="stat-value" id="statPrintsCount">0</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Saldo Acumulado RFC</div>
+                <div class="stat-value" id="statRFCCount" style="color: var(--success-color);">0.00</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2>📜 Mis Obras en el Sistema</h2>
+              <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+                  <thead>
+                    <tr style="border-bottom: 2px solid var(--border-color); color: var(--primary-color);">
+                      <th style="padding: 0.8rem;">Título de la Obra</th>
+                      <th style="padding: 0.8rem; text-align: center;">Impresiones Realizadas</th>
+                      <th style="padding: 0.8rem; text-align: right;">Recompensa Generada</th>
+                    </tr>
+                  </thead>
+                  <tbody id="userPoemsTableBody">
+                    <tr><td colspan="3" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">Cargando tus obras poéticas...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- PESTAÑA 2: CARGAR POEMA -->
+          <div id="tab-cargar" class="tab-content">
+            <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 2rem;">
+              <div class="card">
+                <h2>✍️ Publicar Nueva Obra Poética</h2>
+                <form id="formUploadPoem" onsubmit="handleUploadPoem(event)">
+                  <div class="form-group">
+                    <label for="poemTitle">Título de la Obra</label>
+                    <input type="text" id="poemTitle" class="form-control" placeholder="Ej: Brisa de Otoño" required maxlength="60">
+                  </div>
+
+                  <div class="form-group">
+                    <label for="poemContent">Cuerpo del Poema (Versos)</label>
+                    <textarea id="poemContent" class="form-control" rows="8" placeholder="Escribe aquí tus versos..." required oninput="updateCharCounter()"></textarea>
+                    <div id="charCounter" style="text-align: right; font-size: 0.8rem; color: var(--text-muted); margin-top: 0.3rem;">0 / 400 caracteres</div>
+                  </div>
+
+                  <button type="submit" id="btnUploadPoem" class="btn">🚀 Publicar e Incluir en Cola de Impresión</button>
+                </form>
+              </div>
+
+              <div class="card">
+                <h2>📖 Normas y Derechos de Autor</h2>
+                <p style="font-size: 0.92rem; color: var(--text-muted); margin-bottom: 1rem; line-height: 1.6;">
+                  Al publicar tu obra en <strong>Poemas al Viento</strong>, tu poema pasará a formar parte de la rotación aleatoria que emite la terminal física Point Smart al recibir colaboraciones del público.
+                </p>
+                <ul style="list-style: none; font-size: 0.88rem; color: var(--text-muted);">
+                  <li style="margin-bottom: 0.8rem; display: flex; gap: 0.5rem;">✨ <strong>Propiedad Intelectual:</strong> Mantienes el 100% de la autoría sobre tu obra.</li>
+                  <li style="margin-bottom: 0.8rem; display: flex; gap: 0.5rem;">🪙 <strong>Recompensas Automatizadas:</strong> Cada ticket térmico emitido acredita tokens RFC a tu saldo.</li>
+                  <li style="margin-bottom: 0.8rem; display: flex; gap: 0.5rem;">🛡️ <strong>Moderación Editorial:</strong> El equipo verifica que el contenido respete las pautas de convivencia artística.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- PESTAÑA 3: RECOMPENSA -->
+          <div id="tab-recompensa" class="tab-content">
+            <div class="card">
+              <h2>🏆 Estado de Recompensa y Retiros RFC</h2>
+              
+              <div id="thresholdAlert" class="notification info" style="display: block;">
+                <strong style="color: #fff;">💡 Umbral de Retiro:</strong> El saldo mínimo para solicitar la transferencia a tu billetera virtual es de <strong>10.00 RFC</strong>.
+              </div>
+
+              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.4); padding: 1.5rem; border-radius: 16px; margin-bottom: 2rem; border: 1px solid rgba(255,255,255,0.05);">
+                <div>
+                  <div style="font-size: 0.9rem; color: var(--text-muted);">Saldo Acumulado Disponible</div>
+                  <div id="rewardRFCBalance" style="font-size: 2.5rem; font-weight: 800; font-family: monospace; color: var(--success-color);">0.00 RFC</div>
+                </div>
+                <div id="withdrawalStatusBadge" style="padding: 0.6rem 1.2rem; border-radius: 20px; font-weight: bold; font-size: 0.9rem; background: rgba(251, 191, 36, 0.1); color: var(--accent-color); border: 1px solid rgba(251, 191, 36, 0.2);">
+                  Acumulando impresiones
+                </div>
+              </div>
+
+              <!-- Configuración de Billetera -->
+              <h3 style="font-family: 'Playfair Display', serif; color: #fff; margin-bottom: 1rem; font-size: 1.3rem;">
+                💳 Dirección de Billetera Virtual (EVM / Polygon)
+              </h3>
+
+              <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; margin-bottom: 1.5rem;">
+                <input type="text" id="walletInput" class="form-control" style="flex: 1; min-width: 280px;" placeholder="Ej: 0x1234... (Dirección de 42 caracteres)">
+                <button onclick="handleSaveWallet()" class="btn" style="width: auto; padding: 0.85rem 1.8rem;">Guardar Billetera</button>
+                <button type="button" onclick="toggleTutorial()" class="btn-tutorial">
+                  💡 ¿Cómo crear una billetera virtual?
+                </button>
+              </div>
+
+              <!-- TUTORIAL INTERACTIVO DESPLEGABLE -->
+              <div id="tutorialBox" class="tutorial-box">
+                <h3 style="font-family: 'Playfair Display', serif; color: var(--accent-color); margin-bottom: 1.2rem; font-size: 1.3rem;">
+                  📖 Guía Fácil: Cómo Crear tu Billetera Virtual para Recibir Tokens RFC
+                </h3>
+
+                <div class="tutorial-step">
+                  <div class="step-number">1</div>
+                  <div class="step-text">
+                    <h4>Descarga una Aplicación de Billetera Web3</h4>
+                    <p>Instala una billetera compatible con la red EVM (Ethereum / Polygon). Te recomendamos instalar <strong>MetaMask</strong> o <strong>Rabby Wallet</strong> en tu teléfono celular (App Store / Play Store) o como extensión en tu navegador web.</p>
+                  </div>
+                </div>
+
+                <div class="tutorial-step">
+                  <div class="step-number">2</div>
+                  <div class="step-text">
+                    <h4>Crea tu Cuenta y Resguarda tus Palabras Clave</h4>
+                    <p>Sigue las instrucciones de la aplicación para crear una nueva billetera. La aplicación te dará una frase secreta de 12 palabras. <strong>Guárdalas en un papel seguro y nunca las compartas con nadie.</strong></p>
+                  </div>
+                </div>
+
+                <div class="tutorial-step">
+                  <div class="step-number">3</div>
+                  <div class="step-text">
+                    <h4>Copia tu Dirección de Billetera (Public Address)</h4>
+                    <p>En la parte superior de tu billetera verás tu dirección pública. Es una secuencia de números y letras que empieza siempre con <strong>0x...</strong> (ejemplo: <code>0x71C...39A</code>). Haz clic en copiar.</p>
+                  </div>
+                </div>
+
+                <div class="tutorial-step">
+                  <div class="step-number">4</div>
+                  <div class="step-text">
+                    <h4>Pégala en este Portal</h4>
+                    <p>Pega tu dirección copiada en el campo de texto de arriba y haz clic en <strong>Guardar Billetera</strong>. ¡Listo! Cuando alcanzás el monto de retiro, tus regalías en tokens RFC se transferirán directamente a tu cuenta.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `}
+      </div>
+
+      <footer>
+        EL PECADO TEATRO &bull; TODOS LOS DERECHOS RESERVADOS &bull; LEY 11.723 ARGENTINA
+      </footer>
+
+      <script>
+        const globalNotif = document.getElementById('globalNotif');
+
+        function showNotif(type, message) {
+          if (!globalNotif) return;
+          globalNotif.className = 'notification ' + type;
+          globalNotif.textContent = message;
+          globalNotif.style.display = 'block';
+          setTimeout(() => { globalNotif.style.display = 'none'; }, 6000);
+        }
+
+        function switchTab(tabId) {
+          document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+          document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+          const target = document.getElementById(tabId);
+          if (target) target.classList.add('active');
+
+          const btns = document.querySelectorAll('.tab-btn');
+          if (tabId === 'tab-poemas' && btns[0]) btns[0].classList.add('active');
+          if (tabId === 'tab-cargar' && btns[1]) btns[1].classList.add('active');
+          if (tabId === 'tab-recompensa' && btns[2]) btns[2].classList.add('active');
+        }
+
+        function toggleTutorial() {
+          const box = document.getElementById('tutorialBox');
+          if (!box) return;
+          if (box.style.display === 'block') {
+            box.style.display = 'none';
+          } else {
+            box.style.display = 'block';
+            box.scrollIntoView({ behavior: 'smooth' });
+          }
+        }
+
+        function updateCharCounter() {
+          const content = document.getElementById('poemContent');
+          const counter = document.getElementById('charCounter');
+          if (content && counter) {
+            counter.textContent = content.value.length + ' / 400 caracteres';
+          }
+        }
+
+        async function handleAuthSubmit(event) {
+          event.preventDefault();
+          const penName = document.getElementById('penNameInput').value.trim();
+          if (!penName) return;
+
+          const btn = document.getElementById('btnAuthSubmit');
+          btn.disabled = true;
+          btn.textContent = 'Verificando...';
+
+          try {
+            const res = await fetch('/api/escritores/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ penName })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error al autenticar');
+
+            if (data.success) {
+              showNotif('success', '¡Sesión iniciada! Entrando...');
+              setTimeout(() => window.location.reload(), 1000);
+            } else if (data.notRegistered) {
+              showNotif('info', 'Firma no encontrada. Por favor completa tu registro para continuar.');
+              document.getElementById('authTitle').textContent = '🖋️ Registro de Escritor';
+              btn.style.display = 'none';
+              document.getElementById('penNameInput').disabled = true;
+              document.getElementById('registerSection').style.display = 'block';
+            }
+          } catch (err) {
+            showNotif('error', err.message);
+          } finally {
+            btn.disabled = false;
+            btn.textContent = 'Continuar al Portal';
+          }
+        }
+
+        async function handleRegisterSubmit() {
+          const penName = document.getElementById('penNameInput').value.trim();
+          const legalName = document.getElementById('regLegalName').value.trim();
+          const cuitCuil = document.getElementById('regCuit').value.trim();
+          const wallet = document.getElementById('regWallet').value.trim();
+          const acceptedTerms = document.getElementById('regAcceptTerms').checked;
+
+          if (!legalName || !cuitCuil) {
+            showNotif('error', 'Por favor completa Nombre Completo y CUIT/CUIL.');
+            return;
+          }
+          if (!acceptedTerms) {
+            showNotif('error', 'Debes aceptar los términos de la licencia para continuar.');
+            return;
+          }
+
+          try {
+            const res = await fetch('/api/escritores/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ penName, legalName, cuitCuil, wallet, acceptedTerms })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error en registro');
+
+            showNotif('success', '¡Cuenta creada con éxito! Entrando...');
+            setTimeout(() => window.location.reload(), 1200);
+          } catch (err) {
+            showNotif('error', err.message);
+          }
+        }
+
+        async function handleLogout() {
+          try {
+            await fetch('/api/escritores/logout', { method: 'POST' });
+            window.location.reload();
+          } catch (e) {
+            window.location.reload();
+          }
+        }
+
+        async function loadDashboardData() {
+          try {
+            const res = await fetch('/api/escritores/dashboard-data');
+            if (!res.ok) return;
+            const data = await res.json();
+
+            // Rellenar estadísticas
+            document.getElementById('statPoemsCount').textContent = data.stats.totalPoems;
+            document.getElementById('statPrintsCount').textContent = data.stats.totalPrints;
+            document.getElementById('statRFCCount').textContent = data.stats.totalEarnedRFC.toFixed(2);
+            document.getElementById('rewardRFCBalance').textContent = data.stats.totalEarnedRFC.toFixed(2) + ' RFC';
+
+            // Tabla de poemas
+            const tbody = document.getElementById('userPoemsTableBody');
+            if (data.poems.length === 0) {
+              tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">Aún no has publicado poemas en tu catálogo. Ve a la pestaña "Cargar" para publicar el primero.</td></tr>';
+            } else {
+              tbody.innerHTML = data.poems.map(p => \`
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <td style="padding: 0.8rem; font-weight: 600; color: #fff;">\${p.title}</td>
+                  <td style="padding: 0.8rem; text-align: center; font-family: monospace; font-weight: bold; color: #fff;">\${p.prints}</td>
+                  <td style="padding: 0.8rem; text-align: right; font-weight: bold; font-family: monospace; color: var(--success-color);">\${p.earnedRFC.toFixed(2)} RFC</td>
+                </tr>
+              \`).join('');
+            }
+
+            // Wallet input
+            if (data.authorData && data.authorData.wallet) {
+              document.getElementById('walletInput').value = data.authorData.wallet;
+            }
+
+            // Estado de umbral
+            const badge = document.getElementById('withdrawalStatusBadge');
+            const alertBox = document.getElementById('thresholdAlert');
+            if (data.stats.totalEarnedRFC >= data.stats.minWithdrawalThreshold) {
+              badge.style.background = 'rgba(52, 211, 153, 0.15)';
+              badge.style.color = 'var(--success-color)';
+              badge.style.borderColor = 'rgba(52, 211, 153, 0.3)';
+              badge.textContent = '🟢 Saldo Mínimo Alcanzado (Habilitado)';
+              
+              alertBox.className = 'notification success';
+              alertBox.innerHTML = '<strong style="color: #fff;">🎉 ¡Felicidades!</strong> Has alcanzado el saldo mínimo de 10 RFC para retirar. Asegúrate de tener guardada tu billetera virtual abajo.';
+            } else {
+              badge.textContent = '⏳ Acumulando impresiones (' + data.stats.totalEarnedRFC.toFixed(1) + ' / 10 RFC)';
+            }
+          } catch (e) {
+            console.error('Error cargando dashboard:', e);
+          }
+        }
+
+        async function handleSaveWallet() {
+          const wallet = document.getElementById('walletInput').value.trim();
+          if (!wallet) {
+            showNotif('error', 'Ingresa una dirección de billetera');
+            return;
+          }
+
+          try {
+            const res = await fetch('/api/escritores/update-wallet', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ wallet })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error al guardar billetera');
+
+            showNotif('success', '¡Dirección de billetera vinculada con éxito!');
+            loadDashboardData();
+          } catch (e) {
+            showNotif('error', e.message);
+          }
+        }
+
+        async function handleUploadPoem(event) {
+          event.preventDefault();
+          const title = document.getElementById('poemTitle').value.trim();
+          const content = document.getElementById('poemContent').value.trim();
+          if (!title || !content) return;
+
+          const btn = document.getElementById('btnUploadPoem');
+          btn.disabled = true;
+          btn.textContent = 'Publicando...';
+
+          try {
+            const res = await fetch('/api/escritores/upload-poem', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title, content })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error al publicar poema');
+
+            showNotif('success', '¡Poema publicado y añadido a la cola de impresión!');
+            document.getElementById('formUploadPoem').reset();
+            updateCharCounter();
+            loadDashboardData();
+            switchTab('tab-poemas');
+          } catch (e) {
+            showNotif('error', e.message);
+          } finally {
+            btn.disabled = false;
+            btn.textContent = '🚀 Publicar e Incluir en Cola de Impresión';
+          }
+        }
+
+        // Cargar datos iniciales si está autenticado
+        if (${authorName ? 'true' : 'false'}) {
+          loadDashboardData();
+        }
+      </script>
+    </body>
+    </html>
+  `);
+});
+
 // Iniciar servidor
 app.listen(PORT, () => {
   console.log(`====================================================`);
