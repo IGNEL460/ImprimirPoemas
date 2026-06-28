@@ -2456,7 +2456,10 @@ app.get('/escritores', (req, res) => {
                   <div class="step-number">1</div>
                   <div class="step-text">
                     <h4>Descarga una Aplicación de Billetera Web3</h4>
-                    <p>Instala una billetera compatible con la red EVM (Ethereum / Polygon). Te recomendamos instalar <strong>MetaMask</strong> o <strong>Rabby Wallet</strong> en tu teléfono celular (App Store / Play Store) o como extensión en tu navegador web.</p>
+                    <p style="margin-bottom: 0.8rem;">Instala una billetera compatible con la red EVM (Ethereum / Polygon). Te recomendamos instalar <strong>MetaMask</strong> en tu teléfono celular (App Store / Play Store) o como extensión en tu navegador web.</p>
+                    <a href="https://metamask.io/es/download?sig_params=&sig=OHXtQkiw6eH0yxVZb3wFabCEahlcimocFuh8I90u2nEF2Ats3ETf_fQ2qO4zEx8PYr5CXzU0PQFEOgXuGpmHvQ&attributionId=e08a5779-3e4e-4999-92f7-d12f3bb7e872&_branch_match_id=1565069290781969993&_branch_referrer=H4sIAAAAAAAAAwXBwQ6CIBgA4LfpZhpaSJtrrWF2Mrdq1qVB%2FihTxACzOvTsfV%2Fj3GDXvt%2FJvp0rcEwx286l9hutYGNlneRZ6YpWTivIgs%2F7cuPhlDK%2Bo6zpHlLpRzo28YEEI%2BppirbOhvQk7qJAzzz60nd8vJrlrvyeg2OR0rwux%2F2gslcxY84ZyUcndX%2BoEghitsSYeCFE4EWEEI8ggb1qgUTIOYYYo9nPgABjZF%2FfudGTBZPQqoY%2FZgHNK8MAAAA%3D" target="_blank" rel="noopener" class="btn" style="display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; width: auto; padding: 0.6rem 1.2rem; font-size: 0.9rem; background: linear-gradient(135deg, #f6851b 0%, #e2761b 100%); text-decoration: none; color: white;">
+                      🦊 Descargar MetaMask Oficial
+                    </a>
                   </div>
                 </div>
 
