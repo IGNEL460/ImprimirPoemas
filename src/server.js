@@ -970,13 +970,20 @@ app.get('/pecar', (req, res) => {
           font-weight: 600;
           font-size: 0.95rem;
           cursor: pointer;
-          transition: all 0.2s;
+          transition: all 0.15s ease;
           outline: none;
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+          user-select: none;
         }
 
         .preset-btn:hover {
           background: rgba(239, 68, 68, 0.12);
           border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .preset-btn:active {
+          transform: scale(0.94);
         }
 
         .preset-btn.active {
@@ -1026,10 +1033,13 @@ app.get('/pecar', (req, res) => {
           font-weight: 800;
           letter-spacing: 0.5px;
           cursor: pointer;
-          transition: all 0.2s;
+          transition: all 0.15s ease;
           box-shadow: 0 4px 20px rgba(239, 68, 68, 0.25);
           text-transform: uppercase;
           outline: none;
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+          user-select: none;
         }
 
         .btn-action:hover:not(:disabled) {
@@ -1038,7 +1048,7 @@ app.get('/pecar', (req, res) => {
         }
 
         .btn-action:active:not(:disabled) {
-          transform: scale(0.98);
+          transform: scale(0.96);
         }
 
         .btn-action:disabled {
@@ -1131,7 +1141,14 @@ app.get('/pecar', (req, res) => {
       <script>
         let activeAmount = 200;
 
+        function triggerVibration() {
+          if (navigator.vibrate) {
+            try { navigator.vibrate(15); } catch(e) {}
+          }
+        }
+
         function selectPreset(amount) {
+          triggerVibration();
           activeAmount = amount;
           document.getElementById('amountVal').textContent = amount.toFixed(2);
           document.getElementById('customAmount').value = '';
@@ -1162,6 +1179,7 @@ app.get('/pecar', (req, res) => {
         }
 
         async function enviarCobro() {
+          triggerVibration();
           if (activeAmount < 15) {
             showToast('El monto mínimo para pecar es de $15.00 ARS');
             return;
@@ -1193,15 +1211,18 @@ app.get('/pecar', (req, res) => {
           } catch (err) {
             showToast('Error de conexión con el servidor.');
           } finally {
-            btn.disabled = false;
-            btn.textContent = '🍎 Pecar... digo Pagar';
+            setTimeout(() => {
+              btn.disabled = false;
+              btn.textContent = '🍎 Pecar... digo Pagar';
+            }, 2000);
           }
         }
 
         async function imprimirEfectivo() {
+          triggerVibration();
           const btn = document.getElementById('btnImprimirEfectivo');
           btn.disabled = true;
-          btn.textContent = '💵 Imprimiendo...';
+          btn.textContent = '💵 Enviando a ticketera...';
 
           try {
             const response = await fetch('/print-logo-and-poem', {
@@ -1214,25 +1235,29 @@ app.get('/pecar', (req, res) => {
             const data = await response.json();
 
             if (response.ok) {
-              showToast('¡Imprimiendo logo y poema para cobro en efectivo!');
+              showToast('✨ Impresión enviada. La ticketera imprimirá logo y poema en segundo plano.');
             } else {
               showToast('Error: ' + data.error);
             }
           } catch (err) {
             showToast('Error de conexión con el servidor.');
           } finally {
-            btn.disabled = false;
-            btn.textContent = '💵 Imprimir Poema (Efectivo)';
+            setTimeout(() => {
+              btn.disabled = false;
+              btn.textContent = '💵 Imprimir Poema (Efectivo)';
+            }, 2500);
           }
         }
 
+        let toastTimer = null;
         function showToast(msg) {
           const toast = document.getElementById('toast');
           toast.textContent = msg;
           toast.style.display = 'block';
-          setTimeout(() => {
+          if (toastTimer) clearTimeout(toastTimer);
+          toastTimer = setTimeout(() => {
             toast.style.display = 'none';
-          }, 4000);
+          }, 4500);
         }
       </script>
     </body>
@@ -1270,11 +1295,9 @@ app.post('/test-print-logo', async (req, res) => {
   }
 });
 
-// Endpoint para imprimir logo + poema en efectivo (sin transacción de cobro)
-app.post('/print-logo-and-poem', async (req, res) => {
+async function processCashPrint() {
+  console.log('[Efectivo] Solicitando impresión de logo + poema en efectivo en segundo plano...');
   try {
-    console.log('[Efectivo] Solicitando impresión de logo + poema en efectivo...');
-    
     // 1. Logo
     try {
       if (logoBase64) {
@@ -1297,14 +1320,18 @@ app.post('/print-logo-and-poem', async (req, res) => {
       'Poema'
     );
     await incrementPoemPrint(filename);
-
-    return res.status(200).json({ success: true, message: 'Impresión en efectivo enviada con éxito' });
+    console.log('[Efectivo] Impresión en efectivo enviada con éxito a la terminal.');
   } catch (error) {
     const errorDetails = error.response?.data ? JSON.stringify(error.response.data) : error.message;
-    console.error('[Efectivo] Error en la impresión en efectivo:', errorDetails);
-    const errorMessage = error.response?.data?.message || (error.response?.data?.error_messages ? error.response.data.error_messages.join(', ') : null) || error.message;
-    return res.status(500).json({ error: errorMessage });
+    console.error('[Efectivo] Error en la impresión en efectivo en segundo plano:', errorDetails);
   }
+}
+
+// Endpoint para imprimir logo + poema en efectivo (sin transacción de cobro)
+app.post('/print-logo-and-poem', (req, res) => {
+  console.log('[Efectivo] Recibida solicitud de impresión. Respondiendo inmediatamente e iniciando proceso en segundo plano...');
+  processCashPrint();
+  return res.status(200).json({ success: true, message: 'Impresión iniciada en segundo plano' });
 });
 
 // Endpoint para crear una orden de cobro en la terminal Point
