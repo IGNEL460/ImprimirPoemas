@@ -1,0 +1,7 @@
+{
+  "mpFeePercent": 4.4,
+  "mpFeeFixed": 0.1,
+  "taxPercent": 5,
+  "paperCostFixed": 20,
+  "reservePercent": 60
+}

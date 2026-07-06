@@ -193,7 +193,6 @@ app.get('/', async (req, res) => {
   let terminals = [];
   let terminalError = null;
 
-  // Intentar cargar las terminales si hay token disponible
   if (hasToken) {
     try {
       const response = await axios.get('https://api.mercadopago.com/terminals/v1/list', {
@@ -201,14 +200,12 @@ app.get('/', async (req, res) => {
           'Authorization': `Bearer ${accessToken}`
         }
       });
-      // La API oficial devuelve las terminales en data.terminals
       terminals = response.data.data?.terminals || response.data.results || [];
     } catch (err) {
       terminalError = err.response?.data?.message || err.message;
     }
   }
 
-  // Generar HTML de las terminales de forma segura para evitar problemas de template literals anidados
   const terminalsHtml = terminals.map(term => {
     const isPdv = term.operating_mode === 'PDV';
     const statusColor = term.status === 'online' ? 'var(--success-color)' : 'var(--text-muted)';
@@ -221,8 +218,8 @@ app.get('/', async (req, res) => {
       `<button class="btn btn-secondary" style="width: auto; margin-top: 0; padding: 0.5rem 1rem; font-size: 0.85rem; border-color: rgba(248, 113, 113, 0.3);" onclick="changeMode('${term.id}', 'STANDALONE')">🔄 Cambiar a Autónomo (STANDALONE)</button>`;
 
     return `
-      <div class="terminal-item">
-        <div class="terminal-header">
+      <div class="terminal-item" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 10px; padding: 1rem; margin-bottom: 1rem;">
+        <div class="terminal-header" style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-weight: 600;">
           <span>ID de Terminal (N/S): <strong style="color: var(--primary-color); font-family: monospace;">${term.id}</strong></span>
           <span style="color: ${statusColor}">
             ${statusLabel}
@@ -240,7 +237,10 @@ app.get('/', async (req, res) => {
     `;
   }).join('');
 
-  // Leer poemas disponibles
+  const registry = await getAuthorRegistry();
+  const econ = await calculateEconomicStats(registry);
+  const config = await getTaxesConfig();
+
   let poemsCount = 0;
   try {
     const poemsDir = path.join(__dirname, '../poemas');
@@ -248,21 +248,15 @@ app.get('/', async (req, res) => {
       const files = fs.readdirSync(poemsDir);
       poemsCount = files.filter(f => f.endsWith('.txt')).length;
     }
-  } catch (e) {
-    console.error('Error contando poemas:', e);
-  }
+  } catch (e) {}
 
-  // Leer estadísticas de impresión
   let stats = {};
   try {
     if (fs.existsSync(STATS_FILE)) {
       stats = JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'));
     }
-  } catch (e) {
-    console.error('Error leyendo estadísticas de impresión:', e);
-  }
+  } catch (e) {}
 
-  // Obtener todos los poemas y mapear sus estadísticas
   let statsList = [];
   try {
     const poemsDir = path.join(__dirname, '../poemas');
@@ -277,11 +271,8 @@ app.get('/', async (req, res) => {
         statsList.push({ file, title, author, prints, status });
       }
     }
-  } catch (e) {
-    console.error('Error generando lista de estadísticas:', e);
-  }
+  } catch (e) {}
 
-  // Ordenar por cantidad de impresiones (descendente)
   statsList.sort((a, b) => b.prints - a.prints);
 
   const statsHtml = statsList.map(item => {
@@ -305,13 +296,54 @@ app.get('/', async (req, res) => {
     `;
   }).join('');
 
+  const authorsHtml = econ.authorsList.map(auth => {
+    const eligibleClass = auth.balanceRFC >= 10 ? 'style="color: var(--success-color); font-weight: bold;"' : 'style="color: var(--text-muted);"';
+    const walletDisplay = auth.wallet ? `<span style="font-family: monospace; font-size: 0.85rem; color: var(--primary-color);">${auth.wallet.slice(0, 6)}...${auth.wallet.slice(-4)}</span>` : '<span style="color: var(--text-muted); font-style: italic;">Sin vincular</span>';
+    const equivalentPesos = auth.balanceRFC * econ.rfcShareValue;
+
+    return `
+      <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+        <td style="padding: 0.8rem; font-weight: 600; color: #fff;">${auth.penName}</td>
+        <td style="padding: 0.8rem; color: #fff;">${auth.legalName}</td>
+        <td style="padding: 0.8rem; font-family: monospace; color: var(--text-muted);">${auth.cuitCuil}</td>
+        <td style="padding: 0.8rem;" title="${auth.wallet || 'Sin billetera'}">${walletDisplay}</td>
+        <td style="padding: 0.8rem; text-align: center; font-family: monospace;">${auth.prints}</td>
+        <td style="padding: 0.8rem; text-align: center; font-family: monospace; color: var(--text-muted);">$${auth.pricePerUse}</td>
+        <td style="padding: 0.8rem; text-align: right; font-family: monospace; color: var(--success-color);">${auth.balanceRFC.toFixed(2)} RFC</td>
+        <td style="padding: 0.8rem; text-align: right; font-family: monospace;" ${eligibleClass}>$${equivalentPesos.toFixed(2)} ARS</td>
+      </tr>
+    `;
+  }).join('');
+
+  const transTransactionsHtml = [...econ.payments].reverse().slice(0, 100).map(p => {
+    const dateFormatted = new Date(p.timestamp).toLocaleString('es-AR');
+    const isCash = p.type === 'cash';
+    const typeLabel = isCash ? '💵 Efectivo' : '💳 Point';
+    const typeColor = isCash ? 'color: var(--success-color);' : 'color: var(--primary-color);';
+
+    return `
+      <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+        <td style="padding: 0.8rem; color: var(--text-muted); font-size: 0.85rem;">${dateFormatted}</td>
+        <td style="padding: 0.8rem; font-family: monospace; color: var(--text-muted); font-size: 0.85rem;" title="${p.paymentId}">${p.paymentId.slice(0, 12)}...</td>
+        <td style="padding: 0.8rem; font-weight: 600; color: #fff;">${p.vendor || 'Sin Evento'}</td>
+        <td style="padding: 0.8rem; font-weight: 600; ${typeColor}">${typeLabel}</td>
+        <td style="padding: 0.8rem; font-family: monospace; text-align: right; color: #fff;">$${p.amount.toFixed(2)}</td>
+        <td style="padding: 0.8rem; font-family: monospace; text-align: right; color: var(--text-muted); font-size: 0.85rem;">-$${(p.mpFee || 0).toFixed(2)}</td>
+        <td style="padding: 0.8rem; font-family: monospace; text-align: right; color: var(--text-muted); font-size: 0.85rem;">-$${(p.taxValue || 0).toFixed(2)}</td>
+        <td style="padding: 0.8rem; font-family: monospace; text-align: right; color: var(--text-muted); font-size: 0.85rem;">-$${(p.paperCost || 0).toFixed(2)}</td>
+        <td style="padding: 0.8rem; font-family: monospace; text-align: right; color: var(--success-color); font-weight: bold;">$${(p.netAmount || p.amount).toFixed(2)}</td>
+        <td style="padding: 0.8rem; font-family: monospace; text-align: right; color: #fbbf24; font-weight: bold;">$${(p.reserveAllocated || 0).toFixed(2)}</td>
+      </tr>
+    `;
+  }).join('');
+
   res.send(`
     <!DOCTYPE html>
     <html lang="es">
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Poemas en Point Smart - Dashboard</title>
+      <title>Poemas en Point Smart - Dashboard de Finanzas y Control</title>
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
@@ -326,6 +358,7 @@ app.get('/', async (req, res) => {
           --primary-hover: #a855f7;
           --success-color: #34d399;
           --error-color: #f87171;
+          --accent-color: #fbbf24;
         }
         
         * {
@@ -347,18 +380,18 @@ app.get('/', async (req, res) => {
         }
 
         .container {
-          max-width: 1000px;
+          max-width: 1100px;
           margin: 0 auto;
         }
 
         header {
           text-align: center;
-          margin-bottom: 3rem;
+          margin-bottom: 2rem;
         }
 
         h1 {
           font-family: 'Playfair Display', serif;
-          font-size: 3rem;
+          font-size: 2.8rem;
           font-weight: 700;
           margin-bottom: 0.5rem;
           background: linear-gradient(135deg, #c084fc 0%, #34d399 100%);
@@ -368,7 +401,53 @@ app.get('/', async (req, res) => {
 
         .subtitle {
           color: var(--text-muted);
-          font-size: 1.1rem;
+          font-size: 1rem;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+        }
+
+        .nav-tabs {
+          display: flex;
+          gap: 0.5rem;
+          margin-bottom: 2rem;
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+          padding-bottom: 0.8rem;
+          overflow-x: auto;
+        }
+
+        .tab-btn {
+          padding: 0.8rem 1.3rem;
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 12px;
+          color: var(--text-muted);
+          font-family: 'Outfit', sans-serif;
+          font-weight: 600;
+          font-size: 0.9rem;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          white-space: nowrap;
+        }
+
+        .tab-btn:hover {
+          background: rgba(192, 132, 252, 0.1);
+          color: #fff;
+        }
+
+        .tab-btn.active {
+          background: linear-gradient(135deg, var(--primary-color) 0%, #a855f7 100%);
+          border-color: var(--primary-color);
+          color: #fff;
+          box-shadow: 0 4px 15px rgba(192, 132, 252, 0.35);
+        }
+
+        .tab-content {
+          display: none;
+          animation: fadeIn 0.3s ease-out;
+        }
+
+        .tab-content.active {
+          display: block;
         }
 
         .grid {
@@ -393,12 +472,7 @@ app.get('/', async (req, res) => {
           border-radius: 20px;
           padding: 2rem;
           box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-          transition: transform 0.2s, border-color 0.2s;
-        }
-
-        .card:hover {
-          transform: translateY(-2px);
-          border-color: rgba(192, 132, 252, 0.2);
+          margin-bottom: 2rem;
         }
 
         .card h2 {
@@ -410,17 +484,64 @@ app.get('/', async (req, res) => {
           gap: 0.5rem;
         }
 
-        .status-indicator {
-          display: inline-block;
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          margin-right: 0.5rem;
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 1.2rem;
+          margin-bottom: 1.5rem;
         }
 
-        .status-ok { background-color: var(--success-color); box-shadow: 0 0 10px var(--success-color); }
-        .status-warning { background-color: #fbbf24; box-shadow: 0 0 10px #fbbf24; }
-        .status-error { background-color: var(--error-color); box-shadow: 0 0 10px var(--error-color); }
+        .stat-card {
+          background: rgba(0, 0, 0, 0.4);
+          border: 1px solid rgba(255,255,255,0.06);
+          border-radius: 14px;
+          padding: 1.25rem;
+          text-align: center;
+        }
+
+        .stat-value {
+          font-size: 2rem;
+          font-weight: 800;
+          font-family: monospace;
+          color: var(--accent-color);
+          margin-top: 0.3rem;
+        }
+
+        .stat-label {
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .form-group {
+          margin-bottom: 1.2rem;
+          text-align: left;
+        }
+
+        .form-group label {
+          display: block;
+          font-size: 0.85rem;
+          color: var(--text-muted);
+          margin-bottom: 0.4rem;
+          font-weight: 600;
+        }
+
+        .form-control {
+          width: 100%;
+          padding: 0.8rem 1rem;
+          border-radius: 10px;
+          border: 1px solid var(--border-color);
+          background: rgba(0, 0, 0, 0.45);
+          color: white;
+          font-family: 'Outfit', sans-serif;
+          font-size: 1rem;
+          outline: none;
+        }
+
+        .form-control:focus {
+          border-color: var(--primary-color);
+        }
 
         .btn {
           display: inline-block;
@@ -439,22 +560,14 @@ app.get('/', async (req, res) => {
           margin-top: 1rem;
         }
 
-        .btn:hover {
-          opacity: 0.9;
-        }
-
-        .btn:active {
-          transform: scale(0.98);
-        }
+        .btn:hover { opacity: 0.9; }
+        .btn:active { transform: scale(0.98); }
 
         .btn-secondary {
           background: rgba(255, 255, 255, 0.08);
           border: 1px solid var(--border-color);
         }
-
-        .btn-secondary:hover {
-          background: rgba(255, 255, 255, 0.12);
-        }
+        .btn-secondary:hover { background: rgba(255, 255, 255, 0.12); }
 
         .info-item {
           display: flex;
@@ -463,15 +576,8 @@ app.get('/', async (req, res) => {
           border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
 
-        .info-label {
-          color: var(--text-muted);
-        }
-
-        .info-value {
-          font-weight: 600;
-          font-family: monospace;
-          color: #e5e7eb;
-        }
+        .info-label { color: var(--text-muted); }
+        .info-value { font-weight: 600; font-family: monospace; color: #e5e7eb; }
 
         .code-block {
           background: rgba(0, 0, 0, 0.4);
@@ -483,30 +589,6 @@ app.get('/', async (req, res) => {
           margin-top: 0.5rem;
           border: 1px solid rgba(255, 255, 255, 0.05);
           color: #38bdf8;
-        }
-
-        ul {
-          list-style: none;
-        }
-
-        li {
-          padding: 0.5rem 0;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-        }
-
-        .terminal-item {
-          background: rgba(255, 255, 255, 0.02);
-          border: 1px solid var(--border-color);
-          border-radius: 10px;
-          padding: 1rem;
-          margin-bottom: 1rem;
-        }
-
-        .terminal-header {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 0.5rem;
-          font-weight: 600;
         }
 
         .toast {
@@ -524,6 +606,11 @@ app.get('/', async (req, res) => {
           animation: slideIn 0.3s ease-out;
         }
 
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
         @keyframes slideIn {
           from { transform: translateY(100%); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
@@ -534,92 +621,211 @@ app.get('/', async (req, res) => {
       <div class="container">
         <header>
           <h1>✿ Poemas al Viento ✿</h1>
-          <p class="subtitle">Integración de Mercado Pago Point Smart & Impresión de Poemas</p>
+          <p class="subtitle">AUDITORÍA Y CONTROL FINANCIERO DEL FONDO</p>
         </header>
 
-        <div class="grid">
-          <!-- CARD DE ESTADO -->
-          <div class="card">
-            <h2>
-              <span class="status-indicator ${hasToken && hasTerminal ? 'status-ok' : 'status-warning'}"></span>
-              Estado del Servidor
-            </h2>
-            <div class="info-item">
-              <span class="info-label">Servidor Online</span>
-              <span class="info-value text-success">SÍ</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Poemas cargados</span>
-              <span class="info-value">${poemsCount} poemas</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Token Configurado</span>
-              <span class="info-value">${hasToken ? 'ACTIVO (✓)' : 'FALTA (✗)'}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Terminal ID Configurado</span>
-              <span class="info-value">${hasTerminal ? 'CONFIGURADO (✓)' : 'FALTA (✗)'}</span>
+        <!-- Navegación por pestañas -->
+        <div class="nav-tabs">
+          <button class="tab-btn active" onclick="switchTab('tab-terminales')">🔌 Terminales Point</button>
+          <button class="tab-btn" onclick="switchTab('tab-config')">⚙️ Configuración Financiera</button>
+          <button class="tab-btn" onclick="switchTab('tab-rendimiento')">📊 Rendimiento y Reservas</button>
+          <button class="tab-btn" onclick="switchTab('tab-escritores')">👥 Escritores y Saldos</button>
+          <button class="tab-btn" onclick="switchTab('tab-transacciones')">💳 Historial de Cobros</button>
+          <button class="tab-btn" onclick="switchTab('tab-obras')">📜 Informe de Obras</button>
+        </div>
+
+        <!-- PESTAÑA 1: TERMINALES -->
+        <div id="tab-terminales" class="tab-content active">
+          <div class="grid">
+            <div class="card">
+              <h2>🔌 Estado de Terminal y Webhooks</h2>
+              <div class="info-item">
+                <span class="info-label">Poemas cargados</span>
+                <span class="info-value">${poemsCount} poemas</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Token Configurado</span>
+                <span class="info-value">${hasToken ? 'ACTIVO (✓)' : 'FALTA (✗)'}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Terminal ID Configurado</span>
+                <span class="info-value">${hasTerminal ? 'CONFIGURADO (✓)' : 'FALTA (✗)'}</span>
+              </div>
+
+              <button id="btnTest" class="btn" ${!hasToken || !hasTerminal ? 'disabled' : ''}>
+                ✨ Imprimir Poema de Prueba
+              </button>
+              <button id="btnTestLogo" class="btn btn-secondary" ${!hasToken || !hasTerminal ? 'disabled' : ''} style="margin-top: 0.5rem; border-color: rgba(192, 132, 252, 0.3);">
+                🖼️ Imprimir Logo de Prueba
+              </button>
             </div>
 
-            <button id="btnTest" class="btn" ${!hasToken || !hasTerminal ? 'disabled' : ''}>
-              ✨ Imprimir Poema de Prueba
-            </button>
-            <button id="btnTestLogo" class="btn btn-secondary" ${!hasToken || !hasTerminal ? 'disabled' : ''} style="margin-top: 0.5rem; border-color: rgba(192, 132, 252, 0.3);">
-              🖼️ Imprimir Logo de Prueba
-            </button>
-          </div>
-
-          <!-- CARD DE CONFIGURACIÓN WEBHOOK -->
-          <div class="card">
-            <h2>⚙ Configuración de Webhook</h2>
-            <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">
-              Mercado Pago enviará señales automáticas a este servidor cuando tus clientes realicen un pago. Configura este endpoint en tu panel de desarrollador:
-            </p>
-            <span class="info-label">Dirección Webhook (URL pública):</span>
-            <div class="code-block" id="webhookUrl">Cargando...</div>
-            
-            <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 1rem;">
-              * Nota: Cuando despliegues en <strong>Render</strong>, reemplaza la parte inicial de esta URL con el enlace que te asigne Render.
-            </p>
-          </div>
-
-          <!-- CARD DE SIMULADOR DE COBRO -->
-          <div class="card" ${!hasToken || !hasTerminal ? 'style="display:none;"' : ''}>
-            <h2>💸 Iniciar Cobro en Terminal</h2>
-            <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">
-              Envía un monto a cobrar a tu Point Smart. La terminal saldrá del modo espera y solicitará la tarjeta.
-            </p>
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-              <span style="font-size: 1.2rem; font-weight: bold; color: var(--primary-color);">$</span>
-              <input type="number" id="chargeAmount" value="15.00" step="0.01" min="15.00" style="flex: 1; padding: 0.8rem; border-radius: 10px; border: 1px solid var(--border-color); background: rgba(0, 0, 0, 0.4); color: white; font-family: Outfit, sans-serif; font-size: 1rem;">
-            </div>
-            <button id="btnCharge" class="btn" style="background: linear-gradient(135deg, #34d399 0%, #10b981 100%);">
-              💳 Enviar Cobro a Point
-            </button>
-          </div>
-
-          <!-- CARD DE TERMINALES -->
-          <div class="card full-width">
-            <h2>POS/Terminales Asociadas</h2>
-            ${terminalError ? `
-              <p style="color: var(--error-color)">Error al consultar terminales: ${terminalError}</p>
-            ` : ''}
-
-            ${terminals.length === 0 && !terminalError ? `
-              <p style="color: var(--text-muted)">
-                ${hasToken ? 'No se encontraron terminales Point Smart vinculadas a esta cuenta.' : 'Configura tu Access Token en el archivo .env para listar tus terminales.'}
+            <div class="card">
+              <h2>⚙ Endpoint de Webhook</h2>
+              <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">
+                Configure esta URL de notificación en su panel de desarrollador de Mercado Pago para procesar cobros de Point Smart automáticamente:
               </p>
-            ` : ''}
+              <span class="info-label">Dirección Webhook (URL pública):</span>
+              <div class="code-block" id="webhookUrl">Cargando...</div>
+            </div>
 
-            ${terminalsHtml}
+            <div class="card">
+              <h2>💸 Simular Envío de Cobro</h2>
+              <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">
+                Pruebe enviando una orden de cobro temporal a su dispositivo Point Smart:
+              </p>
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <span style="font-size: 1.2rem; font-weight: bold; color: var(--primary-color);">$</span>
+                <input type="number" id="chargeAmount" value="200.00" step="1.00" min="15.00" class="form-control" style="flex: 1;">
+              </div>
+              <button id="btnCharge" class="btn" style="background: linear-gradient(135deg, #34d399 0%, #10b981 100%);">
+                💳 Enviar Cobro a Point
+              </button>
+            </div>
+
+            <div class="card full-width">
+              <h2> POS / Terminales Asociadas</h2>
+              ${terminalError ? `<p style="color: var(--error-color)">Error al consultar terminales: ${terminalError}</p>` : ''}
+              ${terminals.length === 0 && !terminalError ? `<p style="color: var(--text-muted)">No se encontraron terminales Point vinculadas.</p>` : ''}
+              ${terminalsHtml}
+            </div>
+          </div>
+        </div>
+
+        <!-- PESTAÑA 2: CONFIGURACIÓN FINANCIERA -->
+        <div id="tab-config" class="tab-content">
+          <div class="card">
+            <h2>⚙️ Parámetros Financieros (Impuestos y Costos)</h2>
+            <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem;">
+              Configure las retenciones y costos impositivos de la ticketera para que el sistema calcule el ingreso neto real y la porción asignada al Fondo de Reserva.
+            </p>
+            <form id="formConfig" onsubmit="handleSaveConfig(event)">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+                <div class="form-group">
+                  <label for="cfgMpPercent">Comisión Mercado Pago (%)</label>
+                  <input type="number" id="cfgMpPercent" value="${config.mpFeePercent}" step="0.01" class="form-control" required>
+                </div>
+                <div class="form-group">
+                  <label for="cfgMpFixed">Comisión Fija Mercado Pago ($ ARS)</label>
+                  <input type="number" id="cfgMpFixed" value="${config.mpFeeFixed}" step="0.01" class="form-control" required>
+                </div>
+                <div class="form-group">
+                  <label for="cfgTaxPercent">Otros Impuestos y Retenciones (%)</label>
+                  <input type="number" id="cfgTaxPercent" value="${config.taxPercent}" step="0.01" class="form-control" required>
+                </div>
+                <div class="form-group">
+                  <label for="cfgPaperCost">Costo Insumo Papel / Ticket ($ ARS)</label>
+                  <input type="number" id="cfgPaperCost" value="${config.paperCostFixed}" step="0.01" class="form-control" required>
+                </div>
+                <div class="form-group">
+                  <label for="cfgReservePercent">Asignación al Fondo de Reserva (%)</label>
+                  <input type="number" id="cfgReservePercent" value="${config.reservePercent}" step="1" max="100" class="form-control" required>
+                  <span style="font-size: 0.75rem; color: var(--text-muted);">Porcentaje del ingreso neto destinado a respaldar el RFC.</span>
+                </div>
+              </div>
+              <button type="submit" class="btn" style="width: auto; padding: 0.8rem 2.5rem; margin-top: 1.5rem;">Guardar Cambios Financieros</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- PESTAÑA 3: RENDIMIENTO Y RESERVAS -->
+        <div id="tab-rendimiento" class="tab-content">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-label">Recaudación Bruta</div>
+              <div class="stat-value">$${econ.totalCollected.toFixed(2)}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Costos e Impuestos</div>
+              <div class="stat-value" style="color: var(--error-color);">-$${econ.totalCostsAndTaxes.toFixed(2)}</div>
+            </div>
+            <div class="stat-card" style="border-color: #fbbf24;">
+              <div class="stat-label">Fondo de Reserva</div>
+              <div class="stat-value" style="color: #fbbf24;">$${econ.totalReservesPool.toFixed(2)}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">RFC en Circulación</div>
+              <div class="stat-value" style="color: var(--primary-color);">${econ.totalRFCDistributed.toFixed(2)} RFC</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Valor de Rescate / RFC</div>
+              <div class="stat-value" style="color: var(--success-color);">$${econ.rfcShareValue.toFixed(4)}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Margen Operativo</div>
+              <div class="stat-value" style="color: var(--success-color);">$${econ.operatingSurplus.toFixed(2)}</div>
+            </div>
           </div>
 
-          <!-- CARD DE ESTADÍSTICAS -->
-          <div class="card full-width">
-            <h2>📊 Informe de Reproducción y Derechos de Autor</h2>
-            <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem;">
-              Control de impresiones para liquidación de regalías y cumplimiento de la Ley de Propiedad Intelectual N° 11.723 en Argentina.
+          <div class="card">
+            <h2>🛡️ Sostenibilidad del Fondo (Modelo de Cuotaparte)</h2>
+            <p style="color: var(--text-muted); line-height: 1.6; margin-bottom: 1rem;">
+              En lugar de liquidar regalías a tasa fija 1:1, los tokens RFC acumulados por los escritores funcionan como <strong>cuotapartes del Fondo de Reserva</strong>.
             </p>
+            <p style="color: var(--text-muted); line-height: 1.6; margin-bottom: 1rem;">
+              El valor líquido en pesos de cada RFC se calcula en tiempo real dividiendo el dinero resguardado en el Fondo de Reserva por el total de tokens RFC emitidos. Si aumentan los costos del papel o los impuestos retenidos, el valor del RFC se ajusta a la realidad de caja, garantizando que el proyecto <strong>nunca sea insolvente</strong> y que los autores cobren regalías debidamente respaldadas por el excedente neto de caja.
+            </p>
+          </div>
+        </div>
+
+        <!-- PESTAÑA 4: ESCRITORES -->
+        <div id="tab-escritores" class="tab-content">
+          <div class="card">
+            <h2>👥 Registro de Escritores Autorizados</h2>
+            <div style="overflow-x: auto;">
+              <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+                <thead>
+                  <tr style="border-bottom: 2px solid var(--border-color); color: var(--primary-color);">
+                    <th style="padding: 0.8rem;">Firma</th>
+                    <th style="padding: 0.8rem;">Nombre Legal</th>
+                    <th style="padding: 0.8rem;">CUIT/CUIL</th>
+                    <th style="padding: 0.8rem;">Billetera EVM</th>
+                    <th style="padding: 0.8rem; text-align: center;">Prints</th>
+                    <th style="padding: 0.8rem; text-align: center;">Regalía/Print</th>
+                    <th style="padding: 0.8rem; text-align: right;">Saldos RFC</th>
+                    <th style="padding: 0.8rem; text-align: right;">Rescate Pesos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${authorsHtml || '<tr><td colspan="8" style="text-align:center; padding: 1.5rem; color: var(--text-muted);">No hay escritores registrados.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PESTAÑA 5: TRANSACCIONES -->
+        <div id="tab-transacciones" class="tab-content">
+          <div class="card">
+            <h2>💳 Registro Completo de Cobros (Últimas 100)</h2>
+            <div style="overflow-x: auto;">
+              <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+                <thead>
+                  <tr style="border-bottom: 2px solid var(--border-color); color: var(--primary-color);">
+                    <th style="padding: 0.8rem;">Fecha/Hora</th>
+                    <th style="padding: 0.8rem;">ID Pago</th>
+                    <th style="padding: 0.8rem;">Evento/Vendedor</th>
+                    <th style="padding: 0.8rem;">Tipo</th>
+                    <th style="padding: 0.8rem; text-align: right;">Cobro Bruto</th>
+                    <th style="padding: 0.8rem; text-align: right;">Comisión MP</th>
+                    <th style="padding: 0.8rem; text-align: right;">Impuesto</th>
+                    <th style="padding: 0.8rem; text-align: right;">Papel</th>
+                    <th style="padding: 0.8rem; text-align: right;">Ingreso Neto</th>
+                    <th style="padding: 0.8rem; text-align: right;">F. Reserva</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${transTransactionsHtml || '<tr><td colspan="10" style="text-align:center; padding: 1.5rem; color: var(--text-muted);">No hay transacciones de cobro registradas.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PESTAÑA 6: INFORME DE OBRAS -->
+        <div id="tab-obras" class="tab-content">
+          <div class="card">
+            <h2>📊 Historial de Impresiones por Obra</h2>
             <div style="overflow-x: auto;">
               <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
                 <thead>
@@ -637,7 +843,7 @@ app.get('/', async (req, res) => {
             </div>
             <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
               <span style="font-size: 0.85rem; color: var(--text-muted);">
-                * Nota: Según la Ley 11.723, la reproducción de poemas de autores vivos (como Goyo.art3) requiere autorización expresa y puede estar sujeta al pago de aranceles.
+                * Nota: Reiniciar los contadores vaciará el contador acumulado de impresiones en el archivo stats.
               </span>
               <button id="btnResetStats" class="btn btn-secondary" style="width: auto; margin-top: 0; padding: 0.5rem 1rem; font-size: 0.85rem; border-color: rgba(248, 113, 113, 0.3); color: var(--error-color);">
                 🗑️ Reiniciar Contadores
@@ -647,32 +853,69 @@ app.get('/', async (req, res) => {
         </div>
       </div>
 
-      <div id="toast" class="toast">¡Imprimiendo poema de prueba!</div>
+      <div id="toast" class="toast">¡Procesando!</div>
 
       <script>
-        // Rellenar dinámicamente la URL del webhook basada en el navegador actual
         document.getElementById('webhookUrl').textContent = window.location.origin + '/webhook';
 
-        // Manejar botón de prueba de impresión
-        const btnTest = document.getElementById('btnTest');
         const toast = document.getElementById('toast');
+        function showToast(message) {
+          toast.textContent = message;
+          toast.style.display = 'block';
+          setTimeout(() => { toast.style.display = 'none'; }, 4000);
+        }
 
+        function switchTab(tabId) {
+          document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+          document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+          const target = document.getElementById(tabId);
+          if (target) target.classList.add('active');
+
+          const btns = document.querySelectorAll('.tab-btn');
+          btns.forEach(btn => {
+            if (btn.getAttribute('onclick').includes(tabId)) {
+              btn.classList.add('active');
+            }
+          });
+        }
+
+        // Guardar configuración
+        async function handleSaveConfig(event) {
+          event.preventDefault();
+          const mpFeePercent = parseFloat(document.getElementById('cfgMpPercent').value);
+          const mpFeeFixed = parseFloat(document.getElementById('cfgMpFixed').value);
+          const taxPercent = parseFloat(document.getElementById('cfgTaxPercent').value);
+          const paperCostFixed = parseFloat(document.getElementById('cfgPaperCost').value);
+          const reservePercent = parseFloat(document.getElementById('cfgReservePercent').value);
+
+          try {
+            const res = await fetch('/api/admin/save-config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mpFeePercent, mpFeeFixed, taxPercent, paperCostFixed, reservePercent })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error al guardar');
+            showToast('¡Configuración financiera guardada con éxito! Recargando...');
+            setTimeout(() => window.location.reload(), 1500);
+          } catch (e) {
+            showToast(e.message);
+          }
+        }
+
+        // Terminales y Pruebas
+        const btnTest = document.getElementById('btnTest');
         if (btnTest) {
           btnTest.addEventListener('click', async () => {
             btnTest.disabled = true;
             btnTest.textContent = 'Enviando...';
-            
             try {
-              const response = await fetch('/test-print', { method: 'POST' });
-              const data = await response.json();
-              
-              if (response.ok) {
-                showToast('¡Poema enviado correctamente a la ticketera!');
-              } else {
-                showToast('Error: ' + data.error);
-              }
+              const res = await fetch('/test-print', { method: 'POST' });
+              if (res.ok) showToast('¡Poema enviado a la ticketera!');
+              else showToast('Error al imprimir');
             } catch (err) {
-              showToast('Error de red al intentar imprimir.');
+              showToast('Error de red.');
             } finally {
               btnTest.disabled = false;
               btnTest.textContent = '✨ Imprimir Poema de Prueba';
@@ -680,25 +923,17 @@ app.get('/', async (req, res) => {
           });
         }
 
-        // Manejar botón de prueba de impresión de logo
         const btnTestLogo = document.getElementById('btnTestLogo');
-
         if (btnTestLogo) {
           btnTestLogo.addEventListener('click', async () => {
             btnTestLogo.disabled = true;
             btnTestLogo.textContent = 'Enviando logo...';
-            
             try {
-              const response = await fetch('/test-print-logo', { method: 'POST' });
-              const data = await response.json();
-              
-              if (response.ok) {
-                showToast('¡Logo de prueba enviado a la ticketera!');
-              } else {
-                showToast('Error: ' + data.error);
-              }
+              const res = await fetch('/test-print-logo', { method: 'POST' });
+              if (res.ok) showToast('¡Logo de prueba enviado!');
+              else showToast('Error al imprimir logo');
             } catch (err) {
-              showToast('Error de red al intentar imprimir.');
+              showToast('Error de red.');
             } finally {
               btnTestLogo.disabled = false;
               btnTestLogo.textContent = '🖼️ Imprimir Logo de Prueba';
@@ -706,41 +941,24 @@ app.get('/', async (req, res) => {
           });
         }
 
-        // Manejar botón de simular cobro
         const btnCharge = document.getElementById('btnCharge');
         const chargeAmount = document.getElementById('chargeAmount');
-
         if (btnCharge) {
           btnCharge.addEventListener('click', async () => {
             const amount = parseFloat(chargeAmount.value);
-            if (isNaN(amount) || amount <= 0) {
-              showToast('Error: Ingresa un monto válido mayor a 0.');
-              return;
-            }
-
+            if (isNaN(amount) || amount <= 0) return showToast('Monto inválido.');
             btnCharge.disabled = true;
-            btnCharge.textContent = 'Enviando cobro...';
-            
+            btnCharge.textContent = 'Enviando...';
             try {
-              const response = await fetch('/create-order', {
+              const res = await fetch('/create-order', {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  amount: amount,
-                  notificationUrl: window.location.origin + '/webhook'
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount, notificationUrl: window.location.origin + '/webhook' })
               });
-              const data = await response.json();
-              
-              if (response.ok) {
-                showToast('¡Cobro de $' + amount + ' enviado al Point Smart! Pasa la tarjeta.');
-              } else {
-                showToast('Error: ' + data.error);
-              }
+              if (res.ok) showToast('¡Orden de $' + amount + ' enviada al Point!');
+              else showToast('Error enviando cobro.');
             } catch (err) {
-              showToast('Error de red al intentar iniciar el cobro.');
+              showToast('Error de red.');
             } finally {
               btnCharge.disabled = false;
               btnCharge.textContent = '💳 Enviar Cobro a Point';
@@ -749,73 +967,36 @@ app.get('/', async (req, res) => {
         }
 
         async function changeMode(terminalId, mode) {
-          if (!confirm('¿Estás seguro de que deseas cambiar el modo de la terminal ' + terminalId + ' a ' + mode + '?')) {
-            return;
-          }
-          
-          showToast('Configurando terminal en modo ' + mode + '...');
-          
+          if (!confirm('¿Cambiar modo de terminal ' + terminalId + ' a ' + mode + '?')) return;
           try {
-            const response = await fetch('/change-terminal-mode', {
+            const res = await fetch('/change-terminal-mode', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ terminalId, mode })
             });
-            const data = await response.json();
-            
-            if (response.ok) {
-              showToast('¡Terminal configurada en modo ' + mode + ' con éxito! Reinicia tu terminal física.');
-              setTimeout(() => {
-                window.location.reload();
-              }, 2000);
-            } else {
-              showToast('Error: ' + data.error);
+            if (res.ok) {
+              showToast('¡Modo cambiado con éxito! Recargando...');
+              setTimeout(() => window.location.reload(), 2000);
             }
-          } catch (err) {
-            showToast('Error de red al configurar la terminal.');
+          } catch(e) {
+            showToast('Error.');
           }
         }
 
-        // Manejar botón de reinicio de estadísticas
         const btnResetStats = document.getElementById('btnResetStats');
         if (btnResetStats) {
           btnResetStats.addEventListener('click', async () => {
-            if (!confirm('¿Estás seguro de que deseas reiniciar los contadores de impresión a cero? Esta acción no se puede deshacer.')) {
-              return;
-            }
-
-            btnResetStats.disabled = true;
-            btnResetStats.textContent = 'Reiniciando...';
-
+            if (!confirm('¿Reiniciar estadísticas?')) return;
             try {
-              const response = await fetch('/reset-stats', { method: 'POST' });
-              const data = await response.json();
-
-              if (response.ok) {
-                showToast('¡Contadores reiniciados con éxito!');
-                setTimeout(() => {
-                  window.location.reload();
-                }, 1500);
-              } else {
-                showToast('Error: ' + data.error);
+              const res = await fetch('/reset-stats', { method: 'POST' });
+              if (res.ok) {
+                showToast('Reiniciado con éxito.');
+                setTimeout(() => window.location.reload(), 1500);
               }
             } catch (err) {
-              showToast('Error de red al intentar reiniciar estadísticas.');
-            } finally {
-              btnResetStats.disabled = false;
-              btnResetStats.textContent = '🗑️ Reiniciar Contadores';
+              showToast('Error.');
             }
           });
-        }
-
-        function showToast(message) {
-          toast.textContent = message;
-          toast.style.display = 'block';
-          setTimeout(() => {
-            toast.style.display = 'none';
-          }, 4000);
         }
       </script>
     </body>
@@ -841,6 +1022,8 @@ app.get('/sw.js', (req, res) => {
 
 // Ruta para la interfaz móvil simplificada de El Pecado ("Pecar con Tarjeta")
 app.get('/pecar', (req, res) => {
+  const vendorName = getVendorFromCookie(req);
+
   res.send(`
     <!DOCTYPE html>
     <html lang="es">
@@ -1088,6 +1271,50 @@ app.get('/pecar', (req, res) => {
           from { transform: translate(-50%, 15px); opacity: 0; }
           to { transform: translate(-50%, 0); opacity: 1; }
         }
+
+        .event-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          background: rgba(251, 191, 36, 0.08);
+          border: 1px solid rgba(251, 191, 36, 0.2);
+          color: var(--accent-color);
+          padding: 0.4rem 1rem;
+          border-radius: 12px;
+          font-size: 0.85rem;
+          font-weight: 600;
+          margin-bottom: 1.5rem;
+        }
+
+        .form-group {
+          margin-bottom: 1.2rem;
+          text-align: left;
+        }
+
+        .form-group label {
+          display: block;
+          font-size: 0.85rem;
+          color: var(--text-muted);
+          margin-bottom: 0.4rem;
+          font-weight: 600;
+        }
+
+        .form-control {
+          width: 100%;
+          padding: 0.85rem 1rem;
+          border-radius: 12px;
+          border: 1px solid var(--border-color);
+          background: rgba(0, 0, 0, 0.45);
+          color: white;
+          font-family: 'Outfit', sans-serif;
+          font-size: 1rem;
+          outline: none;
+        }
+
+        .form-control:focus {
+          border-color: var(--primary-color);
+          box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+        }
       </style>
     </head>
     <body>
@@ -1099,37 +1326,85 @@ app.get('/pecar', (req, res) => {
         <h1>El Pecado</h1>
         <div class="tagline">¿Cuál será tu tentación esta noche?</div>
 
-        <div class="card">
-          <div class="instructions">
-            Elige o digita el monto de tu colaboración para recibir tu ticket poético en el Point.
+        ${!vendorName ? `
+          <!-- PANTALLA DE ACCESO DE VENDEDOR / EVENTO -->
+          <div class="card">
+            <div class="instructions">
+              Ingresa el nombre del evento o punto de venta (ej: <strong>Feria del Libro 2026</strong>) para habilitar el cobro Point.
+            </div>
+
+            <form id="formVendorAuth" onsubmit="handleVendorAuth(event)">
+              <div class="form-group">
+                <label for="vendorNameInput">Nombre del Evento / Vendedor</label>
+                <input type="text" id="vendorNameInput" class="form-control" placeholder="Ej: Feria del Libro" required autocomplete="off">
+              </div>
+
+              <button type="submit" id="btnVendorAuth" class="btn-action">Iniciar Sesión de Evento</button>
+            </form>
+
+            <div style="margin-top: 1.5rem; text-align: center; font-size: 0.85rem;">
+              <a href="#" onclick="showRegisterForm(event)" style="color: var(--accent-color); text-decoration: none;">¿Es un evento nuevo? Regístralo aquí</a>
+            </div>
+
+            <!-- Registro de nuevo vendedor -->
+            <div id="vendorRegisterSection" style="display: none; margin-top: 1.5rem; border-top: 1px dashed var(--border-color); padding-top: 1.5rem;">
+              <h3 style="font-family: 'Playfair Display', serif; color: #fff; margin-bottom: 1rem; font-size: 1.2rem;">Registrar Nuevo Evento</h3>
+              
+              <div class="form-group">
+                <label for="regVendorName">Nombre del Evento (Firma única)</label>
+                <input type="text" id="regVendorName" class="form-control" placeholder="Ej: Teatro El Pecado">
+              </div>
+
+              <div class="form-group">
+                <label for="regVendorDesc">Descripción / Detalles (Opcional)</label>
+                <input type="text" id="regVendorDesc" class="form-control" placeholder="Ej: Función del 4 de Julio">
+              </div>
+
+              <button type="button" onclick="handleVendorRegister()" class="btn-action" style="background: linear-gradient(135deg, var(--accent-color) 0%, #d97706 100%); color: #0b0303; box-shadow: none;">Crear e Iniciar Sesión</button>
+            </div>
           </div>
+        ` : `
+          <!-- INTERFAZ DE COBRO ACTIVA -->
+          <div class="card">
+            <div class="event-badge">
+              📍 Evento: <strong>${vendorName}</strong>
+            </div>
 
-          <div class="amount-display">
-            <span>$</span><span id="amountVal">200.00</span>
+            <div class="instructions">
+              Elige o digita el monto de tu colaboración para recibir tu ticket poético en el Point.
+            </div>
+
+            <div class="amount-display">
+              <span>$</span><span id="amountVal">200.00</span>
+            </div>
+
+            <div class="presets">
+              <button class="preset-btn" onclick="selectPreset(50)">$50</button>
+              <button class="preset-btn" onclick="selectPreset(100)">$100</button>
+              <button class="preset-btn active" onclick="selectPreset(200)">$200</button>
+              <button class="preset-btn" onclick="selectPreset(500)">$500</button>
+              <button class="preset-btn" onclick="selectPreset(1000)">$1000</button>
+              <button class="preset-btn" onclick="selectPreset(2000)">$2000</button>
+            </div>
+
+            <div class="custom-input-container">
+              <span class="custom-input-symbol">Otro monto: $</span>
+              <input type="number" id="customAmount" class="custom-input" placeholder="Ej: 150" min="15" step="5" oninput="handleCustomInput()">
+            </div>
+
+            <button id="btnPecar" class="btn-action" onclick="enviarCobro()">
+              🍎 Pecar... digo Pagar
+            </button>
+
+            <button id="btnImprimirEfectivo" class="btn-action" style="margin-top: 1rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.25);" onclick="imprimirEfectivo()">
+              💵 Imprimir Poema (Efectivo)
+            </button>
+
+            <div style="margin-top: 1.5rem; text-align: center;">
+              <button onclick="handleVendorLogout()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; text-decoration: underline; font-size: 0.85rem;">Cerrar sesión de evento</button>
+            </div>
           </div>
-
-          <div class="presets">
-            <button class="preset-btn" onclick="selectPreset(50)">$50</button>
-            <button class="preset-btn" onclick="selectPreset(100)">$100</button>
-            <button class="preset-btn active" onclick="selectPreset(200)">$200</button>
-            <button class="preset-btn" onclick="selectPreset(500)">$500</button>
-            <button class="preset-btn" onclick="selectPreset(1000)">$1000</button>
-            <button class="preset-btn" onclick="selectPreset(2000)">$2000</button>
-          </div>
-
-          <div class="custom-input-container">
-            <span class="custom-input-symbol">Otro monto: $</span>
-            <input type="number" id="customAmount" class="custom-input" placeholder="Ej: 150" min="15" step="5" oninput="handleCustomInput()">
-          </div>
-
-          <button id="btnPecar" class="btn-action" onclick="enviarCobro()">
-            🍎 Pecar... digo Pagar
-          </button>
-
-          <button id="btnImprimirEfectivo" class="btn-action" style="margin-top: 1rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.25);" onclick="imprimirEfectivo()">
-            💵 Imprimir Poema (Efectivo)
-          </button>
-        </div>
+        `}
 
         <div class="footer">
           EL PECADO TEATRO &bull; ELPECADO.AR
@@ -1147,6 +1422,79 @@ app.get('/pecar', (req, res) => {
           }
         }
 
+        // Acceso de vendedor
+        async function handleVendorAuth(event) {
+          event.preventDefault();
+          const vendorName = document.getElementById('vendorNameInput').value.trim();
+          if (!vendorName) return;
+
+          const btn = document.getElementById('btnVendorAuth');
+          btn.disabled = true;
+          btn.textContent = 'Verificando...';
+
+          try {
+            const res = await fetch('/api/vendedores/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ vendorName })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error al autenticar');
+
+            if (data.success) {
+              window.location.reload();
+            } else if (data.notRegistered) {
+              showToast('El evento/vendedor no está registrado. Regístralo abajo.');
+              document.getElementById('vendorRegisterSection').style.display = 'block';
+            }
+          } catch(e) {
+            showToast(e.message);
+          } finally {
+            btn.disabled = false;
+            btn.textContent = 'Iniciar Sesión de Evento';
+          }
+        }
+
+        function showRegisterForm(event) {
+          event.preventDefault();
+          const section = document.getElementById('vendorRegisterSection');
+          section.style.display = (section.style.display === 'block') ? 'none' : 'block';
+        }
+
+        async function handleVendorRegister() {
+          const vendorName = document.getElementById('regVendorName').value.trim();
+          const description = document.getElementById('regVendorDesc').value.trim();
+
+          if (!vendorName) {
+            showToast('El nombre del evento es obligatorio.');
+            return;
+          }
+
+          try {
+            const res = await fetch('/api/vendedores/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ vendorName, description })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error al registrar evento');
+
+            window.location.reload();
+          } catch (e) {
+            showToast(e.message);
+          }
+        }
+
+        async function handleVendorLogout() {
+          try {
+            await fetch('/api/vendedores/logout', { method: 'POST' });
+            window.location.reload();
+          } catch (e) {
+            window.location.reload();
+          }
+        }
+
+        // Operaciones de cobro
         function selectPreset(amount) {
           triggerVibration();
           activeAmount = amount;
@@ -1229,7 +1577,10 @@ app.get('/pecar', (req, res) => {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json'
-              }
+              },
+              body: JSON.stringify({
+                amount: activeAmount
+              })
             });
 
             const data = await response.json();
@@ -1295,42 +1646,77 @@ app.post('/test-print-logo', async (req, res) => {
   }
 });
 
-async function processCashPrint() {
-  console.log('[Efectivo] Solicitando impresión de logo + poema en efectivo en segundo plano...');
+async function processBackgroundPrintJob(content, filename) {
   try {
-    // 1. Logo
+    // 1. Logotipo
     try {
       if (logoBase64) {
-        console.log('[Efectivo] Encolando impresión de logotipo...');
+        console.log('[Impresora-Fondo] Encolando logotipo...');
         await executePrintActionWithRetry(
           () => printImageOnTerminal(),
           'Logo'
         );
-        // Pausa de 5 segundos para que termine el logotipo antes del poema
         await new Promise(resolve => setTimeout(resolve, 5000));
       }
     } catch (imgError) {
-      console.error('[Efectivo] Falló la impresión del logotipo:', imgError.message);
+      console.error('[Impresora-Fondo] Falló logotipo:', imgError.message);
     }
 
     // 2. Poema
-    const { filename, content } = await getRandomPoem();
-    await executePrintActionWithRetry(
-      () => printOnTerminal(content),
-      'Poema'
-    );
-    await incrementPoemPrint(filename);
-    console.log('[Efectivo] Impresión en efectivo enviada con éxito a la terminal.');
-  } catch (error) {
-    const errorDetails = error.response?.data ? JSON.stringify(error.response.data) : error.message;
-    console.error('[Efectivo] Error en la impresión en efectivo en segundo plano:', errorDetails);
+    try {
+      if (content) {
+        console.log('[Impresora-Fondo] Encolando poema...');
+        await executePrintActionWithRetry(
+          () => printOnTerminal(content),
+          'Poema'
+        );
+        await incrementPoemPrint(filename);
+        console.log('[Impresora-Fondo] Impresión finalizada con éxito.');
+      }
+    } catch (poemError) {
+      console.error('[Impresora-Fondo] Falló poema:', poemError.message);
+    }
+  } catch (err) {
+    console.error('[Impresora-Fondo] Error crítico:', err.message);
   }
 }
 
 // Endpoint para imprimir logo + poema en efectivo (sin transacción de cobro)
-app.post('/print-logo-and-poem', (req, res) => {
-  console.log('[Efectivo] Recibida solicitud de impresión. Respondiendo inmediatamente e iniciando proceso en segundo plano...');
-  processCashPrint();
+app.post('/print-logo-and-poem', async (req, res) => {
+  const { amount } = req.body;
+  const numericAmount = parseFloat(amount) || 200;
+  const vendorName = getVendorFromCookie(req) || 'Sin Evento';
+
+  console.log(`[Efectivo] Solicitud por $${numericAmount} de vendedor "${vendorName}".`);
+
+  let filename = 'desconocido.txt';
+  let authorName = 'Desconocido';
+  let poemTitle = 'Sin Título';
+  let content = '';
+
+  try {
+    const randomPoem = await getRandomPoem();
+    filename = randomPoem.filename;
+    content = randomPoem.content;
+    const meta = parsePoemMetadata(filename, content);
+    authorName = meta.author;
+    poemTitle = meta.title;
+  } catch (err) {
+    console.error('[Efectivo] Error obteniendo poema para registrar:', err.message);
+  }
+
+  // Registrar el cobro aprobado de inmediato en el historial
+  const virtualPaymentId = `cash_${Date.now()}`;
+  try {
+    await recordPayment(virtualPaymentId, numericAmount, filename, authorName, poemTitle, vendorName);
+    console.log(`[Efectivo] Pago registrado: ${virtualPaymentId}`);
+  } catch (recError) {
+    console.error('[Efectivo] Error registrando pago:', recError.message);
+  }
+
+  // Lanzar la impresión física en segundo plano sin esperar
+  processBackgroundPrintJob(content, filename);
+
   return res.status(200).json({ success: true, message: 'Impresión iniciada en segundo plano' });
 });
 
@@ -1351,6 +1737,9 @@ app.post('/create-order', async (req, res) => {
   if (isNaN(numericAmount) || numericAmount < 15.00) {
     return res.status(400).json({ error: 'El monto mínimo de cobro en Mercado Pago es de $15.00 ARS' });
   }
+
+  const vendorName = getVendorFromCookie(req) || 'Sin Evento';
+  lastActiveVendor = vendorName; // Guardar el fallback para webhooks asíncronos
 
   const idempotencyKey = crypto.randomUUID();
   const externalReference = `payment_${Date.now()}`;
@@ -1373,7 +1762,7 @@ app.post('/create-order', async (req, res) => {
   };
 
   try {
-    console.log(`[Cobro] Iniciando cobro de $${numericAmount} en terminal: ${terminalId}...`);
+    console.log(`[Cobro] Iniciando cobro de $${numericAmount} en terminal: ${terminalId} (Vendedor: ${vendorName})...`);
     const response = await axios.post(
       'https://api.mercadopago.com/v1/orders',
       payload,
@@ -1389,6 +1778,7 @@ app.post('/create-order', async (req, res) => {
     // Obtener el ID de la orden creada para iniciar polling en segundo plano
     const orderId = response.data.id;
     if (orderId) {
+      activeOrdersVendors[orderId] = vendorName; // Mapear el ID de orden al vendedor/evento creador
       startOrderPolling(orderId);
     } else {
       console.warn('[Cobro] La API de Mercado Pago no devolvió un ID de orden. No se iniciará polling.');
@@ -1506,7 +1896,7 @@ function getCopyrightStatus(author) {
     const normHist = hist.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     return norm.includes(normHist) || normHist.includes(norm);
   });
-  
+
   if (isHistorical) {
     return { label: 'Dominio Público (Exento)', isAlive: false };
   } else {
@@ -1517,6 +1907,8 @@ function getCopyrightStatus(author) {
 // --- Idempotencia de Impresión de Poemas ---
 const PRINTED_PAYMENTS_FILE = path.join(__dirname, '../printed_payments.json');
 const printedPaymentsCache = new Set();
+const activeOrdersVendors = {};
+let lastActiveVendor = 'Sin Evento';
 
 // Cargar caché inicial desde el archivo si existe
 try {
@@ -1551,6 +1943,56 @@ function markPaymentAsPrinted(paymentId) {
   }
 }
 
+// --- Historial de Transacciones y Liquidaciones ---
+const PAYMENT_HISTORY_FILE = path.join(__dirname, '../payment_history.json');
+
+async function recordPayment(paymentId, amount, filename, author, title, vendor = 'Sin Evento') {
+  try {
+    let history = [];
+    if (fs.existsSync(PAYMENT_HISTORY_FILE)) {
+      const fileContent = await fs.promises.readFile(PAYMENT_HISTORY_FILE, 'utf8');
+      history = JSON.parse(fileContent);
+    }
+    
+    // Calcular costos basándose en taxes_config.json
+    const config = await getTaxesConfig();
+    const grossAmount = parseFloat(amount) || 0;
+    
+    const isCash = paymentId.toString().startsWith('cash_');
+    const mpFee = isCash ? 0 : ((grossAmount * config.mpFeePercent / 100) + config.mpFeeFixed);
+    const taxValue = grossAmount * config.taxPercent / 100;
+    const paperCost = config.paperCostFixed;
+    
+    const netAmount = grossAmount - mpFee - taxValue - paperCost;
+    const reserveAllocated = Math.max(0, netAmount * (config.reservePercent / 100));
+    
+    history.push({
+      paymentId: paymentId.toString(),
+      amount: grossAmount,
+      timestamp: new Date().toISOString(),
+      filename,
+      author,
+      title,
+      vendor: vendor || 'Sin Evento',
+      type: isCash ? 'cash' : 'card',
+      mpFee,
+      taxValue,
+      paperCost,
+      netAmount,
+      reserveAllocated
+    });
+    
+    // Limitar el historial a 1000 transacciones para evitar saturar el disco
+    if (history.length > 1000) {
+      history = history.slice(-1000);
+    }
+    await fs.promises.writeFile(PAYMENT_HISTORY_FILE, JSON.stringify(history, null, 2), 'utf8');
+    console.log(`[Historial] Pago ${paymentId} ($${grossAmount}) registrado correctamente (Vendedor: ${vendor}, Neto: $${netAmount}, Reserva: $${reserveAllocated}).`);
+  } catch (err) {
+    console.error('[Historial] Error al registrar pago en el historial de transacciones:', err);
+  }
+}
+
 // Función genérica para ejecutar una acción de impresión en la terminal con reintentos si está ocupada
 async function executePrintActionWithRetry(printFn, actionName, maxAttempts = 10, delayMs = 3000) {
   let attempts = 0;
@@ -1575,8 +2017,8 @@ async function executePrintActionWithRetry(printFn, actionName, maxAttempts = 10
   }
 }
 
-// Función global para procesar un pago aprobado, imprimir logo y poema
-async function processApprovedPayment(paymentId, amount) {
+// Función global para procesar un pago aprobado, registrar historial, imprimir logo y poema
+async function processApprovedPayment(paymentId, amount, orderId = null) {
   if (!paymentId) return;
   
   const paymentIdStr = paymentId.toString();
@@ -1585,8 +2027,34 @@ async function processApprovedPayment(paymentId, amount) {
     return;
   }
 
-  console.log(`[Impresora] ¡Pago aprobado confirmado! ID: ${paymentIdStr}, Monto: $${amount}.`);
+  let vendorName = 'Sin Evento';
+  if (orderId && activeOrdersVendors[orderId]) {
+    vendorName = activeOrdersVendors[orderId];
+  } else {
+    vendorName = lastActiveVendor;
+  }
+
+  console.log(`[Impresora] ¡Pago aprobado confirmado! ID: ${paymentIdStr}, Monto: $${amount}, Vendedor: ${vendorName}.`);
   
+  // Obtener poema y metadatos antes para registrarlos en el historial de cobros
+  let filename = 'default.txt';
+  let content = '¡Muchas gracias por apoyar nuestro arte!';
+  let author = 'Anónimo';
+  let title = 'Colaboración';
+  try {
+    const poemData = await getRandomPoem();
+    filename = poemData.filename;
+    content = poemData.content;
+    const meta = parsePoemMetadata(filename, content);
+    author = meta.author;
+    title = meta.title;
+  } catch (err) {
+    console.error('[Impresora] Error al obtener poema para procesar pago:', err);
+  }
+
+  // Registrar el cobro aprobado en el archivo de historial de fondos
+  await recordPayment(paymentIdStr, amount, filename, author, title, vendorName);
+
   // 1. Intentar imprimir la imagen del logo con reintentos
   try {
     if (logoBase64) {
@@ -1605,7 +2073,6 @@ async function processApprovedPayment(paymentId, amount) {
   // 2. Imprimir el poema con reintentos
   try {
     console.log('[Impresora] Encolando impresión de poema...');
-    const { filename, content } = await getRandomPoem();
     
     await executePrintActionWithRetry(
       () => printOnTerminal(content),
@@ -1662,14 +2129,14 @@ async function startOrderPolling(orderId, maxAttempts = 100, intervalMs = 3000) 
           for (const payment of payments) {
             if (payment.status === 'approved' || payment.status === 'processed') {
               console.log(`[Polling] Encontrado pago aprobado en la orden. ID: ${payment.id}, Monto: $${payment.transaction_amount}`);
-              await processApprovedPayment(payment.id, payment.transaction_amount);
+              await processApprovedPayment(payment.id, payment.transaction_amount, orderId);
             }
           }
         } else {
           // Fallback con ID virtual si no viene la lista detallada de pagos pero está 'processed'
           const virtualPaymentId = `order_${orderId}`;
           console.log(`[Polling] Sin pagos explícitos en la respuesta. Utilizando ID virtual: ${virtualPaymentId}`);
-          await processApprovedPayment(virtualPaymentId, amount);
+          await processApprovedPayment(virtualPaymentId, amount, orderId);
         }
       } else if (status === 'failed' || status === 'cancelled') {
         console.log(`[Polling] La orden ${orderId} terminó con estado fallido o cancelado (${status}). Deteniendo polling.`);
@@ -1701,7 +2168,7 @@ app.post('/webhook', async (req, res) => {
     }
 
     // Caso 1: Notificación de tipo 'payment' (incluyendo point_integration_wh)
-    if (topic === 'payment' || topic === 'point_integration_wh') {
+    if (topic === 'payment' || action === 'payment.created' || action === 'payment.updated') {
       if (!resourceId) {
         console.warn('[Webhook] Notificación de pago recibida pero sin ID de recurso');
         return res.status(200).send('Falta ID de recurso');
@@ -1720,16 +2187,14 @@ app.post('/webhook', async (req, res) => {
         );
 
         const paymentData = paymentResponse.data;
-        const status = paymentData.status;
-        const statusDetail = paymentData.status_detail;
-        const amount = paymentData.transaction_amount;
+        console.log(`[Webhook] Pago ${resourceId} obtenido. Estado: ${paymentData.status}, Monto: $${paymentData.transaction_amount}`);
 
-        console.log(`[Webhook] Detalles de pago ${resourceId} -> Estado: ${status} (${statusDetail}), Monto: $${amount}`);
-
-        if (status === 'approved') {
-          await processApprovedPayment(resourceId, amount);
-        } else {
-          console.log(`[Webhook] El pago ${resourceId} aún no está aprobado. Estado actual: ${status}`);
+        if (paymentData.status === 'approved') {
+          let orderId = null;
+          if (paymentData.order) {
+            orderId = paymentData.order.id;
+          }
+          await processApprovedPayment(resourceId, paymentData.transaction_amount, orderId);
         }
       } catch (err) {
         console.error(`[Webhook] Error al consultar pago ${resourceId}:`, err.response?.data || err.message);
@@ -1761,7 +2226,7 @@ app.post('/webhook', async (req, res) => {
         for (const payment of payments) {
           if (payment.status === 'approved') {
             console.log(`[Webhook] Encontrado pago aprobado en orden ${resourceId}. ID de pago: ${payment.id}, Monto: $${payment.transaction_amount}`);
-            await processApprovedPayment(payment.id, payment.transaction_amount);
+            await processApprovedPayment(payment.id, payment.transaction_amount, orderData.id);
           }
         }
       } catch (err) {
@@ -1816,6 +2281,108 @@ async function saveAuthorRegistry(registry) {
   }
 }
 
+// --- CONFIGURACIÓN DE VENDEDORES (EVENTOS) Y COSTOS ---
+const VENDOR_REGISTRY_FILE = path.join(__dirname, '../vendor_registry.json');
+const TAXES_CONFIG_FILE = path.join(__dirname, '../taxes_config.json');
+
+function getVendorFromCookie(req) {
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return null;
+  const cookies = cookieHeader.split(';').reduce((acc, c) => {
+    const [name, ...val] = c.trim().split('=');
+    acc[name] = val.join('=');
+    return acc;
+  }, {});
+  return cookies.vendor_session ? decodeURIComponent(cookies.vendor_session) : null;
+}
+
+async function getVendorRegistry() {
+  try {
+    if (fs.existsSync(VENDOR_REGISTRY_FILE)) {
+      const data = await fs.promises.readFile(VENDOR_REGISTRY_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('Error leyendo registro de vendedores:', e);
+  }
+  return {};
+}
+
+async function saveVendorRegistry(registry) {
+  try {
+    await fs.promises.writeFile(VENDOR_REGISTRY_FILE, JSON.stringify(registry, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error guardando registro de vendedores:', e);
+  }
+}
+
+async function getTaxesConfig() {
+  try {
+    if (fs.existsSync(TAXES_CONFIG_FILE)) {
+      const data = await fs.promises.readFile(TAXES_CONFIG_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('Error leyendo config de impuestos:', e);
+  }
+  return {
+    mpFeePercent: 4.4,
+    mpFeeFixed: 0,
+    taxPercent: 5,
+    paperCostFixed: 15,
+    reservePercent: 60
+  };
+}
+
+async function saveTaxesConfig(config) {
+  try {
+    await fs.promises.writeFile(TAXES_CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error guardando config de impuestos:', e);
+  }
+}
+
+// APIs del Portal de Vendedores
+app.post('/api/vendedores/login', async (req, res) => {
+  const { vendorName } = req.body;
+  if (!vendorName) return res.status(400).json({ error: 'Nombre de vendedor/evento requerido' });
+
+  const registry = await getVendorRegistry();
+  const trimmedName = vendorName.trim();
+
+  if (registry[trimmedName]) {
+    res.cookie('vendor_session', trimmedName, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: false, path: '/' });
+    return res.json({ success: true, registered: true });
+  } else {
+    return res.json({ success: false, notRegistered: true });
+  }
+});
+
+app.post('/api/vendedores/register', async (req, res) => {
+  const { vendorName, description } = req.body;
+  if (!vendorName) return res.status(400).json({ error: 'El nombre de vendedor/evento es obligatorio' });
+
+  const registry = await getVendorRegistry();
+  const trimmedName = vendorName.trim();
+
+  registry[trimmedName] = {
+    description: description ? description.trim() : '',
+    createdAt: new Date().toISOString()
+  };
+
+  await saveVendorRegistry(registry);
+  res.cookie('vendor_session', trimmedName, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: false, path: '/' });
+  return res.json({ success: true });
+});
+
+app.post('/api/vendedores/logout', (req, res) => {
+  res.clearCookie('vendor_session', { path: '/' });
+  return res.json({ success: true });
+});
+
+// --- Cuentas con privilegios de Administrador ---
+const ADMIN_ACCOUNTS = ['vendedor de poemas', 'elpecado', 'admin'];
+
 // APIs del Portal de Escritores
 app.post('/api/escritores/login', async (req, res) => {
   const { penName } = req.body;
@@ -1823,9 +2390,10 @@ app.post('/api/escritores/login', async (req, res) => {
 
   const registry = await getAuthorRegistry();
   const trimmedName = penName.trim();
+  const isAdmin = ADMIN_ACCOUNTS.includes(trimmedName.toLowerCase());
 
-  if (registry[trimmedName]) {
-    res.cookie('author_session', encodeURIComponent(trimmedName), { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: false, path: '/' });
+  if (isAdmin || registry[trimmedName]) {
+    res.cookie('author_session', trimmedName, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: false, path: '/' });
     return res.json({ success: true, registered: true });
   } else {
     return res.json({ success: false, notRegistered: true });
@@ -1855,7 +2423,7 @@ app.post('/api/escritores/register', async (req, res) => {
   };
 
   await saveAuthorRegistry(registry);
-  res.cookie('author_session', encodeURIComponent(trimmedName), { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: false, path: '/' });
+    res.cookie('author_session', trimmedName, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: false, path: '/' });
   return res.json({ success: true });
 });
 
@@ -1864,12 +2432,95 @@ app.post('/api/escritores/logout', (req, res) => {
   return res.json({ success: true });
 });
 
+async function calculateEconomicStats(registry) {
+  let stats = {};
+  try {
+    if (fs.existsSync(STATS_FILE)) {
+      stats = JSON.parse(await fs.promises.readFile(STATS_FILE, 'utf8'));
+    }
+  } catch (e) {}
+
+  let payments = [];
+  try {
+    if (fs.existsSync(PAYMENT_HISTORY_FILE)) {
+      payments = JSON.parse(await fs.promises.readFile(PAYMENT_HISTORY_FILE, 'utf8'));
+    }
+  } catch (e) {}
+
+  // 1. Recaudación bruta (tarjetas + efectivo registrados)
+  const totalCollected = payments.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  
+  // 2. Costos e Impuestos Totales
+  const totalCostsAndTaxes = payments.reduce((acc, curr) => {
+    return acc + (curr.mpFee || 0) + (curr.taxValue || 0) + (curr.paperCost || 0);
+  }, 0);
+
+  // 3. Fondo de Reserva de Respaldo (acumulado de cada transacción)
+  const totalReservesPool = payments.reduce((acc, curr) => acc + (curr.reserveAllocated || 0), 0);
+
+  // 4. Calcular el total RFC distributed
+  const poemsDir = path.join(__dirname, '../poemas');
+  const authorsList = [];
+  for (const penName in registry) {
+    const authorInfo = registry[penName];
+    let authorPrints = 0;
+    try {
+      if (fs.existsSync(poemsDir)) {
+        const files = await fs.promises.readdir(poemsDir);
+        for (const file of files.filter(f => f.endsWith('.txt'))) {
+          const filePath = path.join(poemsDir, file);
+          const content = await fs.promises.readFile(filePath, 'utf8');
+          const meta = parsePoemMetadata(file, content);
+          if (meta.author.toLowerCase().trim() === penName.toLowerCase().trim()) {
+            authorPrints += stats[file] || 0;
+          }
+        }
+      }
+    } catch (e) {}
+
+    const earnedRFC = authorPrints * (authorInfo.pricePerUse || 1);
+    authorsList.push({
+      penName,
+      legalName: authorInfo.legalName,
+      cuitCuil: authorInfo.cuitCuil,
+      wallet: authorInfo.wallet,
+      prints: authorPrints,
+      pricePerUse: authorInfo.pricePerUse || 1,
+      balanceRFC: earnedRFC
+    });
+  }
+
+  const totalRFCDistributed = authorsList.reduce((acc, curr) => acc + curr.balanceRFC, 0);
+  
+  // Margen operativo = Recaudación bruta - Costos/Tasas - Reservas
+  const operatingSurplus = Math.max(0, totalCollected - totalCostsAndTaxes - totalReservesPool);
+
+  // 5. Valor de rescate de 1 RFC
+  const rfcShareValue = totalRFCDistributed > 0 ? (totalReservesPool / totalRFCDistributed) : 1.0;
+
+  return {
+    totalCollected,
+    totalCostsAndTaxes,
+    totalReservesPool,
+    totalRFCDistributed,
+    operatingSurplus,
+    rfcShareValue,
+    authorsList,
+    payments
+  };
+}
+
 app.get('/api/escritores/dashboard-data', async (req, res) => {
   const authorName = getAuthorFromCookie(req);
   if (!authorName) return res.status(401).json({ error: 'No autenticado' });
 
+  const trimmedName = authorName.trim();
   const registry = await getAuthorRegistry();
-  const authorData = registry[authorName] || { legalName: authorName, wallet: '', pricePerUse: 1 };
+  const authorData = registry[trimmedName];
+  if (!authorData) return res.status(404).json({ error: 'Autor no registrado' });
+
+  // Calcular métricas globales para obtener el valor de rescate del RFC
+  const econ = await calculateEconomicStats(registry);
 
   let stats = {};
   try {
@@ -1890,7 +2541,7 @@ app.get('/api/escritores/dashboard-data', async (req, res) => {
         const content = await fs.promises.readFile(filePath, 'utf8');
         const meta = parsePoemMetadata(file, content);
 
-        if (meta.author.toLowerCase().trim() === authorName.toLowerCase().trim()) {
+        if (meta.author.toLowerCase().trim() === trimmedName.toLowerCase().trim()) {
           const prints = stats[file] || 0;
           totalPrints += prints;
           authorPoems.push({
@@ -1905,18 +2556,69 @@ app.get('/api/escritores/dashboard-data', async (req, res) => {
   } catch (e) {}
 
   const totalEarnedRFC = totalPrints * (authorData.pricePerUse || 1);
+  const estimatedPesosVal = totalEarnedRFC * econ.rfcShareValue;
 
   return res.json({
-    authorName,
+    authorName: trimmedName,
     authorData,
     poems: authorPoems,
     stats: {
       totalPoems: authorPoems.length,
       totalPrints,
       totalEarnedRFC,
+      rfcShareValue: econ.rfcShareValue,
+      estimatedPesosVal,
       minWithdrawalThreshold: 10
     }
   });
+});
+
+// APIs de Administración (Ruta Raíz /)
+app.get('/api/admin/dashboard-data', async (req, res) => {
+  const registry = await getAuthorRegistry();
+  const econ = await calculateEconomicStats(registry);
+
+  let totalPoems = 0;
+  const poemsDir = path.join(__dirname, '../poemas');
+  try {
+    if (fs.existsSync(poemsDir)) {
+      const files = await fs.promises.readdir(poemsDir);
+      totalPoems = files.filter(f => f.endsWith('.txt')).length;
+    }
+  } catch (e) {}
+
+  const config = await getTaxesConfig();
+
+  return res.json({
+    config,
+    stats: {
+      totalPoems,
+      totalPrints: econ.authorsList.reduce((acc, curr) => acc + curr.prints, 0),
+      totalCollected: econ.totalCollected,
+      totalCostsAndTaxes: econ.totalCostsAndTaxes,
+      totalReservesPool: econ.totalReservesPool,
+      totalRFCDistributed: econ.totalRFCDistributed,
+      operatingSurplus: econ.operatingSurplus,
+      rfcShareValue: econ.rfcShareValue
+    },
+    authors: econ.authorsList,
+    payments: [...econ.payments].reverse().slice(0, 100)
+  });
+});
+
+app.post('/api/admin/save-config', async (req, res) => {
+  const { mpFeePercent, mpFeeFixed, taxPercent, paperCostFixed, reservePercent } = req.body;
+  
+  const config = {
+    mpFeePercent: parseFloat(mpFeePercent) || 0,
+    mpFeeFixed: parseFloat(mpFeeFixed) || 0,
+    taxPercent: parseFloat(taxPercent) || 0,
+    paperCostFixed: parseFloat(paperCostFixed) || 0,
+    reservePercent: parseFloat(reservePercent) || 0
+  };
+
+  await saveTaxesConfig(config);
+  return res.json({ success: true, message: 'Configuración guardada correctamente.' });
 });
 
 app.post('/api/escritores/update-wallet', async (req, res) => {
@@ -1955,7 +2657,6 @@ app.post('/api/escritores/upload-poem', async (req, res) => {
 
     const safeFilename = title.toLowerCase().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_') + '.txt';
     const filePath = path.join(poemsDir, safeFilename);
-
     const poemBody = `${title.trim()}\n\n${content.trim()}\n\n-- ${authorName}`;
     await fs.promises.writeFile(filePath, poemBody, 'utf8');
 
@@ -1972,6 +2673,7 @@ app.get('/artist', (req, res) => res.redirect('/escritores'));
 // RUTA PRINCIPAL DEL PORTAL DE ESCRITORES
 app.get('/escritores', (req, res) => {
   const authorName = getAuthorFromCookie(req);
+  const trimmedName = authorName ? authorName.trim() : '';
 
   res.send(`
     <!DOCTYPE html>
@@ -2002,8 +2704,8 @@ app.get('/escritores', (req, res) => {
           font-family: 'Outfit', sans-serif;
           background-color: var(--bg-color);
           background-image: 
-            radial-gradient(circle at 10% 20%, rgba(239, 68, 68, 0.14) 0%, transparent 40%),
-            radial-gradient(circle at 90% 80%, rgba(251, 191, 36, 0.06) 0%, transparent 40%);
+          	radial-gradient(circle at 10% 20%, rgba(239, 68, 68, 0.14) 0%, transparent 40%),
+          	radial-gradient(circle at 90% 80%, rgba(251, 191, 36, 0.06) 0%, transparent 40%);
           color: var(--text-color);
           min-height: 100vh;
           display: flex;
@@ -2027,56 +2729,61 @@ app.get('/escritores', (req, res) => {
           background: linear-gradient(135deg, #fff 30%, #ef4444 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
+          margin-bottom: 0.4rem;
         }
 
         header p {
+          font-size: 0.8rem;
+          letter-spacing: 2px;
           color: var(--text-muted);
-          font-size: 1.05rem;
-          font-style: italic;
+          text-transform: uppercase;
         }
 
         .user-bar {
-          position: absolute;
-          top: 1.5rem;
-          right: 2rem;
+          margin-top: 1.2rem;
           display: flex;
+          justify-content: center;
           align-items: center;
-          gap: 1rem;
+          gap: 1.5rem;
+          flex-wrap: wrap;
         }
 
         @media (max-width: 768px) {
-          .user-bar { position: static; margin-top: 1rem; justify-content: center; }
+          .user-bar { position: static; margin-top: 1rem; }
         }
 
         .main-container {
-          max-width: 1050px;
-          margin: 2rem auto;
-          padding: 0 1.5rem;
-          flex: 1;
+          max-width: 900px;
           width: 100%;
+          margin: 0 auto;
+          padding: 2rem 1.5rem;
+          flex: 1;
         }
 
-        /* Pestañas */
+        /* Tabs */
         .nav-tabs {
           display: flex;
-          justify-content: center;
-          gap: 0.8rem;
+          gap: 0.6rem;
           margin-bottom: 2rem;
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+          padding-bottom: 0.8rem;
         }
 
         .tab-btn {
-          padding: 0.85rem 1.8rem;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid var(--border-color);
-          border-radius: 14px;
+          flex: 1;
+          padding: 0.9rem;
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 12px;
           color: var(--text-muted);
           font-family: 'Outfit', sans-serif;
           font-weight: 600;
-          font-size: 1rem;
+          font-size: 0.95rem;
           cursor: pointer;
           transition: all 0.25s ease;
           display: flex;
           align-items: center;
+          justify-content: center;
           gap: 0.5rem;
         }
 
@@ -2089,7 +2796,6 @@ app.get('/escritores', (req, res) => {
           background: linear-gradient(135deg, var(--primary-color) 0%, #b91c1c 100%);
           border-color: var(--primary-color);
           color: #fff;
-          box-shadow: 0 4px 20px rgba(239, 68, 68, 0.35);
         }
 
         .tab-content {
@@ -2220,7 +2926,6 @@ app.get('/escritores', (req, res) => {
 
         .btn-tutorial:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(251, 191, 36, 0.3); }
 
-        /* Visor de tutorial */
         .tutorial-box {
           display: none;
           background: rgba(251, 191, 36, 0.05);
@@ -2267,7 +2972,6 @@ app.get('/escritores', (req, res) => {
         .notification.error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #f87171; }
         .notification.info { background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.25); color: var(--accent-color); }
 
-        /* Visor del contrato legal */
         .contract-viewer {
           background: rgba(0, 0, 0, 0.4);
           border: 1px solid var(--border-color);
@@ -2305,7 +3009,7 @@ app.get('/escritores', (req, res) => {
 
         ${authorName ? `
           <div class="user-bar">
-            <span style="font-size: 0.95rem; color: #fff;">✒️ <strong>${authorName}</strong></span>
+            <span style="font-size: 0.95rem; color: #fff;">✒️ Autor: <strong>${authorName}</strong></span>
             <button onclick="handleLogout()" class="btn btn-secondary" style="width: auto; padding: 0.4rem 0.9rem; font-size: 0.85rem;">Cerrar Sesión</button>
           </div>
         ` : ''}
@@ -2315,7 +3019,6 @@ app.get('/escritores', (req, res) => {
         <div id="globalNotif" class="notification"></div>
 
         ${!authorName ? `
-          <!-- PANTALLA DE AUTENTICACIÓN / REGISTRO -->
           <div style="max-width: 550px; margin: 2rem auto;" class="card">
             <h2 id="authTitle">✍️ Acceso a Escritores</h2>
             
@@ -2328,7 +3031,6 @@ app.get('/escritores', (req, res) => {
               <button type="submit" id="btnAuthSubmit" class="btn">Continuar al Portal</button>
             </form>
 
-            <!-- Registro colapsable -->
             <div id="registerSection" style="display: none; margin-top: 1.5rem; border-top: 1px dashed var(--border-color); padding-top: 1.5rem;">
               <h3 style="font-family: 'Playfair Display', serif; color: #fff; margin-bottom: 1rem;">Completar Registro y Contrato Digital</h3>
               
@@ -2363,7 +3065,7 @@ app.get('/escritores', (req, res) => {
             </div>
           </div>
         ` : `
-          <!-- DASHBOARD CON PESTAÑAS DE ESCRITORES -->
+          <!-- DASHBOARD CON PESTAÑAS DE ESCRITORES (NORMAL) -->
           <div class="nav-tabs">
             <button class="tab-btn active" onclick="switchTab('tab-poemas')">📜 Poemas y Estadísticas</button>
             <button class="tab-btn" onclick="switchTab('tab-cargar')">✍️ Cargar Poema</button>
@@ -2388,7 +3090,7 @@ app.get('/escritores', (req, res) => {
             </div>
 
             <div class="card">
-              <h2>📜 Mis Obras en el Sistema</h2>
+              <h2>📜 Mis Obras en el Catálogo</h2>
               <div style="overflow-x: auto;">
                 <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
                   <thead>
@@ -2408,7 +3110,7 @@ app.get('/escritores', (req, res) => {
 
           <!-- PESTAÑA 2: CARGAR POEMA -->
           <div id="tab-cargar" class="tab-content">
-            <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 2rem;">
+            <div style="display: grid; grid-template-columns: 1fr; gap: 2rem;">
               <div class="card">
                 <h2>✍️ Publicar Nueva Obra Poética</h2>
                 <form id="formUploadPoem" onsubmit="handleUploadPoem(event)">
@@ -2426,18 +3128,6 @@ app.get('/escritores', (req, res) => {
                   <button type="submit" id="btnUploadPoem" class="btn">🚀 Publicar e Incluir en Cola de Impresión</button>
                 </form>
               </div>
-
-              <div class="card">
-                <h2>📖 Normas y Derechos de Autor</h2>
-                <p style="font-size: 0.92rem; color: var(--text-muted); margin-bottom: 1rem; line-height: 1.6;">
-                  Al publicar tu obra en <strong>Poemas al Viento</strong>, tu poema pasará a formar parte de la rotación aleatoria que emite la terminal física Point Smart al recibir colaboraciones del público.
-                </p>
-                <ul style="list-style: none; font-size: 0.88rem; color: var(--text-muted);">
-                  <li style="margin-bottom: 0.8rem; display: flex; gap: 0.5rem;">✨ <strong>Propiedad Intelectual:</strong> Mantienes el 100% de la autoría sobre tu obra.</li>
-                  <li style="margin-bottom: 0.8rem; display: flex; gap: 0.5rem;">🪙 <strong>Recompensas Automatizadas:</strong> Cada ticket térmico emitido acredita tokens RFC a tu saldo.</li>
-                  <li style="margin-bottom: 0.8rem; display: flex; gap: 0.5rem;">🛡️ <strong>Moderación Editorial:</strong> El equipo verifica que el contenido respete las pautas de convivencia artística.</li>
-                </ul>
-              </div>
             </div>
           </div>
 
@@ -2450,17 +3140,27 @@ app.get('/escritores', (req, res) => {
                 <strong style="color: #fff;">💡 Umbral de Retiro:</strong> El saldo mínimo para solicitar la transferencia a tu billetera virtual es de <strong>10.00 RFC</strong>.
               </div>
 
-              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.4); padding: 1.5rem; border-radius: 16px; margin-bottom: 2rem; border: 1px solid rgba(255,255,255,0.05);">
+              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.4); padding: 1.5rem; border-radius: 16px; margin-bottom: 2rem; border: 1px solid rgba(255,255,255,0.05); gap: 1.5rem; flex-wrap: wrap;">
                 <div>
                   <div style="font-size: 0.9rem; color: var(--text-muted);">Saldo Acumulado Disponible</div>
                   <div id="rewardRFCBalance" style="font-size: 2.5rem; font-weight: 800; font-family: monospace; color: var(--success-color);">0.00 RFC</div>
                 </div>
-                <div id="withdrawalStatusBadge" style="padding: 0.6rem 1.2rem; border-radius: 20px; font-weight: bold; font-size: 0.9rem; background: rgba(251, 191, 36, 0.1); color: var(--accent-color); border: 1px solid rgba(251, 191, 36, 0.2);">
-                  Acumulando impresiones
+                <div style="text-align: right;">
+                  <div style="font-size: 0.9rem; color: var(--text-muted);">Equivalencia Estimada (Rescate)</div>
+                  <div id="rewardPesosBalance" style="font-size: 2.3rem; font-weight: 800; font-family: monospace; color: var(--accent-color);">$0.00 ARS</div>
                 </div>
               </div>
 
-              <!-- Configuración de Billetera -->
+              <div class="card" style="background: rgba(251, 191, 36, 0.04); border-color: rgba(251, 191, 36, 0.15); margin-bottom: 2rem; padding: 1.5rem;">
+                <h4 style="color: var(--accent-color); margin-bottom: 0.5rem; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">⚖️ Modelo de Respaldo Dinámico (Cuotaparte)</h4>
+                <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 0.8rem;">
+                  Tus tokens RFC representan una cuotaparte del Fondo de Reserva líquido acumulado por impresiones en eventos presenciales. El valor de rescate de 1 RFC a pesos (ARS) se actualiza de forma automática y transparente según las comisiones de cobro, impuestos y costos de papel:
+                </p>
+                <div style="font-family: monospace; font-size: 0.95rem; color: #fff;">
+                  Tipo de Cambio de Rescate: <span id="currentRfcRate" style="color: var(--accent-color); font-weight: bold;">$1.00</span> ARS por RFC
+                </div>
+              </div>
+
               <h3 style="font-family: 'Playfair Display', serif; color: #fff; margin-bottom: 1rem; font-size: 1.3rem;">
                 💳 Dirección de Billetera Virtual (EVM / Polygon)
               </h3>
@@ -2469,48 +3169,29 @@ app.get('/escritores', (req, res) => {
                 <input type="text" id="walletInput" class="form-control" style="flex: 1; min-width: 280px;" placeholder="Ej: 0x1234... (Dirección de 42 caracteres)">
                 <button onclick="handleSaveWallet()" class="btn" style="width: auto; padding: 0.85rem 1.8rem;">Guardar Billetera</button>
                 <button type="button" onclick="toggleTutorial()" class="btn-tutorial">
-                  💡 ¿Cómo crear una billetera virtual?
+                  💡 ¿Cómo crear una billetera?
                 </button>
               </div>
 
-              <!-- TUTORIAL INTERACTIVO DESPLEGABLE -->
               <div id="tutorialBox" class="tutorial-box">
                 <h3 style="font-family: 'Playfair Display', serif; color: var(--accent-color); margin-bottom: 1.2rem; font-size: 1.3rem;">
-                  📖 Guía Fácil: Cómo Crear tu Billetera Virtual para Recibir Tokens RFC
+                  📖 Guía Fácil: Cómo Crear tu Billetera
                 </h3>
-
                 <div class="tutorial-step">
                   <div class="step-number">1</div>
                   <div class="step-text">
-                    <h4>Descarga una Aplicación de Billetera Web3</h4>
-                    <p style="margin-bottom: 0.8rem;">Instala una billetera compatible con la red EVM (Ethereum / Polygon). Te recomendamos instalar <strong>MetaMask</strong> en tu teléfono celular (App Store / Play Store) o como extensión en tu navegador web.</p>
-                    <a href="https://metamask.io/es/download?sig_params=&sig=OHXtQkiw6eH0yxVZb3wFabCEahlcimocFuh8I90u2nEF2Ats3ETf_fQ2qO4zEx8PYr5CXzU0PQFEOgXuGpmHvQ&attributionId=e08a5779-3e4e-4999-92f7-d12f3bb7e872&_branch_match_id=1565069290781969993&_branch_referrer=H4sIAAAAAAAAAwXBwQ6CIBgA4LfpZhpaSJtrrWF2Mrdq1qVB%2FihTxACzOvTsfV%2Fj3GDXvt%2FJvp0rcEwx286l9hutYGNlneRZ6YpWTivIgs%2F7cuPhlDK%2Bo6zpHlLpRzo28YEEI%2BppirbOhvQk7qJAzzz60nd8vJrlrvyeg2OR0rwux%2F2gslcxY84ZyUcndX%2BoEghitsSYeCFE4EWEEI8ggb1qgUTIOYYYo9nPgABjZF%2FfudGTBZPQqoY%2FZgHNK8MAAAA%3D" target="_blank" rel="noopener" class="btn" style="display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; width: auto; padding: 0.6rem 1.2rem; font-size: 0.9rem; background: linear-gradient(135deg, #f6851b 0%, #e2761b 100%); text-decoration: none; color: white;">
-                      🦊 Descargar MetaMask Oficial
+                    <h4>Descarga una Billetera Web3</h4>
+                    <p style="margin-bottom: 0.8rem;">Te recomendamos usar <strong>MetaMask</strong> (iOS / Android / Chrome).</p>
+                    <a href="https://metamask.io/es/download" target="_blank" rel="noopener" class="btn" style="display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; width: auto; padding: 0.6rem 1.2rem; font-size: 0.9rem; background: linear-gradient(135deg, #f6851b 0%, #e2761b 100%); text-decoration: none; color: white;">
+                      🦊 Descargar MetaMask
                     </a>
                   </div>
                 </div>
-
                 <div class="tutorial-step">
                   <div class="step-number">2</div>
                   <div class="step-text">
-                    <h4>Crea tu Cuenta y Resguarda tus Palabras Clave</h4>
-                    <p>Sigue las instrucciones de la aplicación para crear una nueva billetera. La aplicación te dará una frase secreta de 12 palabras. <strong>Guárdalas en un papel seguro y nunca las compartas con nadie.</strong></p>
-                  </div>
-                </div>
-
-                <div class="tutorial-step">
-                  <div class="step-number">3</div>
-                  <div class="step-text">
-                    <h4>Copia tu Dirección de Billetera (Public Address)</h4>
-                    <p>En la parte superior de tu billetera verás tu dirección pública. Es una secuencia de números y letras que empieza siempre con <strong>0x...</strong> (ejemplo: <code>0x71C...39A</code>). Haz clic en copiar.</p>
-                  </div>
-                </div>
-
-                <div class="tutorial-step">
-                  <div class="step-number">4</div>
-                  <div class="step-text">
-                    <h4>Pégala en este Portal</h4>
-                    <p>Pega tu dirección copiada en el campo de texto de arriba y haz clic en <strong>Guardar Billetera</strong>. ¡Listo! Cuando alcanzás el monto de retiro, tus regalías en tokens RFC se transferirán directamente a tu cuenta.</p>
+                    <h4>Copia tu Dirección</h4>
+                    <p>Copia tu dirección pública que comienza con <strong>0x...</strong> y pégala arriba.</p>
                   </div>
                 </div>
               </div>
@@ -2520,7 +3201,7 @@ app.get('/escritores', (req, res) => {
       </div>
 
       <footer>
-        EL PECADO TEATRO &bull; TODOS LOS DERECHOS RESERVADOS &bull; LEY 11.723 ARGENTINA
+        EL PECADO TEATRO &bull; TODOS LOS DERECHOS RESERVADOS
       </footer>
 
       <script>
@@ -2542,28 +3223,23 @@ app.get('/escritores', (req, res) => {
           if (target) target.classList.add('active');
 
           const btns = document.querySelectorAll('.tab-btn');
-          if (tabId === 'tab-poemas' && btns[0]) btns[0].classList.add('active');
-          if (tabId === 'tab-cargar' && btns[1]) btns[1].classList.add('active');
-          if (tabId === 'tab-recompensa' && btns[2]) btns[2].classList.add('active');
+          btns.forEach(btn => {
+            if (btn.getAttribute('onclick').includes(tabId)) {
+              btn.classList.add('active');
+            }
+          });
         }
 
         function toggleTutorial() {
           const box = document.getElementById('tutorialBox');
           if (!box) return;
-          if (box.style.display === 'block') {
-            box.style.display = 'none';
-          } else {
-            box.style.display = 'block';
-            box.scrollIntoView({ behavior: 'smooth' });
-          }
+          box.style.display = (box.style.display === 'block') ? 'none' : 'block';
         }
 
         function updateCharCounter() {
           const content = document.getElementById('poemContent');
           const counter = document.getElementById('charCounter');
-          if (content && counter) {
-            counter.textContent = content.value.length + ' / 400 caracteres';
-          }
+          if (content && counter) counter.textContent = content.value.length + ' / 400 caracteres';
         }
 
         async function handleAuthSubmit(event) {
@@ -2588,7 +3264,7 @@ app.get('/escritores', (req, res) => {
               showNotif('success', '¡Sesión iniciada! Entrando...');
               setTimeout(() => window.location.reload(), 1000);
             } else if (data.notRegistered) {
-              showNotif('info', 'Firma no encontrada. Por favor completa tu registro para continuar.');
+              showNotif('info', 'Firma no encontrada. Por favor completa tu registro.');
               document.getElementById('authTitle').textContent = '🖋️ Registro de Escritor';
               btn.style.display = 'none';
               document.getElementById('penNameInput').disabled = true;
@@ -2596,7 +3272,6 @@ app.get('/escritores', (req, res) => {
             }
           } catch (err) {
             showNotif('error', err.message);
-          } finally {
             btn.disabled = false;
             btn.textContent = 'Continuar al Portal';
           }
@@ -2654,11 +3329,12 @@ app.get('/escritores', (req, res) => {
             document.getElementById('statPrintsCount').textContent = data.stats.totalPrints;
             document.getElementById('statRFCCount').textContent = data.stats.totalEarnedRFC.toFixed(2);
             document.getElementById('rewardRFCBalance').textContent = data.stats.totalEarnedRFC.toFixed(2) + ' RFC';
+            document.getElementById('rewardPesosBalance').textContent = '$' + data.stats.estimatedPesosVal.toFixed(2) + ' ARS';
+            document.getElementById('currentRfcRate').textContent = '$' + data.stats.rfcShareValue.toFixed(4) + ' ARS';
 
-            // Tabla de poemas
             const tbody = document.getElementById('userPoemsTableBody');
             if (data.poems.length === 0) {
-              tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">Aún no has publicado poemas en tu catálogo. Ve a la pestaña "Cargar" para publicar el primero.</td></tr>';
+              tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">No hay poemas publicados.</td></tr>';
             } else {
               tbody.innerHTML = data.poems.map(p => \`
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
@@ -2669,24 +3345,15 @@ app.get('/escritores', (req, res) => {
               \`).join('');
             }
 
-            // Wallet input
             if (data.authorData && data.authorData.wallet) {
               document.getElementById('walletInput').value = data.authorData.wallet;
             }
 
-            // Estado de umbral
             const badge = document.getElementById('withdrawalStatusBadge');
             const alertBox = document.getElementById('thresholdAlert');
             if (data.stats.totalEarnedRFC >= data.stats.minWithdrawalThreshold) {
-              badge.style.background = 'rgba(52, 211, 153, 0.15)';
-              badge.style.color = 'var(--success-color)';
-              badge.style.borderColor = 'rgba(52, 211, 153, 0.3)';
-              badge.textContent = '🟢 Saldo Mínimo Alcanzado (Habilitado)';
-              
               alertBox.className = 'notification success';
-              alertBox.innerHTML = '<strong style="color: #fff;">🎉 ¡Felicidades!</strong> Has alcanzado el saldo mínimo de 10 RFC para retirar. Asegúrate de tener guardada tu billetera virtual abajo.';
-            } else {
-              badge.textContent = '⏳ Acumulando impresiones (' + data.stats.totalEarnedRFC.toFixed(1) + ' / 10 RFC)';
+              alertBox.innerHTML = '<strong style="color: #fff;">🎉 ¡Felicidades!</strong> Has alcanzado el saldo mínimo de 10 RFC para retirar.';
             }
           } catch (e) {
             console.error('Error cargando dashboard:', e);
@@ -2695,11 +3362,7 @@ app.get('/escritores', (req, res) => {
 
         async function handleSaveWallet() {
           const wallet = document.getElementById('walletInput').value.trim();
-          if (!wallet) {
-            showNotif('error', 'Ingresa una dirección de billetera');
-            return;
-          }
-
+          if (!wallet) return showNotif('error', 'Ingresa una dirección');
           try {
             const res = await fetch('/api/escritores/update-wallet', {
               method: 'POST',
@@ -2707,9 +3370,8 @@ app.get('/escritores', (req, res) => {
               body: JSON.stringify({ wallet })
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Error al guardar billetera');
-
-            showNotif('success', '¡Dirección de billetera vinculada con éxito!');
+            if (!res.ok) throw new Error(data.error);
+            showNotif('success', 'Billetera vinculada con éxito!');
             loadDashboardData();
           } catch (e) {
             showNotif('error', e.message);
@@ -2733,9 +3395,8 @@ app.get('/escritores', (req, res) => {
               body: JSON.stringify({ title, content })
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Error al publicar poema');
-
-            showNotif('success', '¡Poema publicado y añadido a la cola de impresión!');
+            if (!res.ok) throw new Error(data.error);
+            showNotif('success', '¡Publicado con éxito!');
             document.getElementById('formUploadPoem').reset();
             updateCharCounter();
             loadDashboardData();
@@ -2748,10 +3409,7 @@ app.get('/escritores', (req, res) => {
           }
         }
 
-        // Cargar datos iniciales si está autenticado
-        if (${authorName ? 'true' : 'false'}) {
-          loadDashboardData();
-        }
+        if (${authorName ? 'true' : 'false'}) loadDashboardData();
       </script>
     </body>
     </html>

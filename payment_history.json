@@ -1,0 +1,32 @@
+[
+  {
+    "paymentId": "cash_1783361472101",
+    "amount": 500,
+    "timestamp": "2026-07-06T18:11:12.103Z",
+    "filename": "castro.txt",
+    "author": "Rosalía de Castro",
+    "title": "DICEN QUE NO HABLAN LAS PLANTAS",
+    "vendor": "Feria de Libros 2026",
+    "type": "cash",
+    "mpFee": 0,
+    "taxValue": 25,
+    "paperCost": 20,
+    "netAmount": 455,
+    "reserveAllocated": 273
+  },
+  {
+    "paymentId": "cash_1783362793388",
+    "amount": 500,
+    "timestamp": "2026-07-06T18:33:13.391Z",
+    "filename": "machado.txt",
+    "author": "Antonio Machado",
+    "title": "CAMINANTE, NO HAY CAMINO",
+    "vendor": "Feria de Libros 2026",
+    "type": "cash",
+    "mpFee": 0,
+    "taxValue": 25,
+    "paperCost": 20,
+    "netAmount": 455,
+    "reserveAllocated": 273
+  }
+]
