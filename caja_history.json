@@ -1,0 +1,27 @@
+[
+  {
+    "action": "close",
+    "user": "Administrador",
+    "timestamp": "2026-07-07T04:34:23.155Z"
+  },
+  {
+    "action": "open",
+    "user": "Administrador",
+    "timestamp": "2026-07-07T04:34:23.273Z"
+  },
+  {
+    "action": "close",
+    "user": "Administrador",
+    "timestamp": "2026-07-07T04:34:23.303Z"
+  },
+  {
+    "action": "open",
+    "user": "Administrador",
+    "timestamp": "2026-07-07T04:35:19.317Z"
+  },
+  {
+    "action": "close",
+    "user": "Administrador",
+    "timestamp": "2026-07-07T04:35:19.560Z"
+  }
+]

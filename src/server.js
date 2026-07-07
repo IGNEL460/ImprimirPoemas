@@ -240,6 +240,20 @@ app.get('/', async (req, res) => {
   const registry = await getAuthorRegistry();
   const econ = await calculateEconomicStats(registry);
   const config = await getTaxesConfig();
+  const cajaState = await getCajaState();
+  const cajaHistory = await getCajaHistory();
+
+  const cajaHistoryHtml = [...cajaHistory].reverse().slice(0, 50).map(h => {
+    const dateStr = new Date(h.timestamp).toLocaleString('es-AR');
+    const actionLabel = h.action === 'open' ? '<span style="color: var(--success-color); font-weight: bold;">🟢 Apertura</span>' : '<span style="color: var(--error-color); font-weight: bold;">🔴 Cierre</span>';
+    return `
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <td style="padding: 0.8rem; color: var(--text-muted);">${dateStr}</td>
+        <td style="padding: 0.8rem;">${actionLabel}</td>
+        <td style="padding: 0.8rem; color: #fff;">${h.user}</td>
+      </tr>
+    `;
+  }).join('');
 
   let poemsCount = 0;
   try {
@@ -632,6 +646,7 @@ app.get('/', async (req, res) => {
           <button class="tab-btn" onclick="switchTab('tab-escritores')">👥 Escritores y Saldos</button>
           <button class="tab-btn" onclick="switchTab('tab-transacciones')">💳 Historial de Cobros</button>
           <button class="tab-btn" onclick="switchTab('tab-obras')">📜 Informe de Obras</button>
+          <button class="tab-btn" onclick="switchTab('tab-caja')">🔑 Control de Caja</button>
         </div>
 
         <!-- PESTAÑA 1: TERMINALES -->
@@ -849,6 +864,54 @@ app.get('/', async (req, res) => {
                 🗑️ Reiniciar Contadores
               </button>
             </div>
+        </div>
+
+        <!-- PESTAÑA 7: CONTROL DE CAJA -->
+        <div id="tab-caja" class="tab-content">
+          <div class="grid">
+            <div class="card">
+              <h2>🔑 Estado de la Caja General</h2>
+              
+              <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem; background: rgba(0,0,0,0.3); padding: 1.5rem; border-radius: 16px; border: 1px solid var(--border-color);">
+                <div class="info-item" style="border-bottom: none; padding: 0;">
+                  <span class="info-label" style="font-size: 1.1rem;">Estado de la Caja:</span>
+                  <span class="info-value" style="font-size: 1.2rem; font-weight: bold;">
+                    ${cajaState.status === 'open' ? '<span style="color: var(--success-color);">🟢 ABIERTA</span>' : '<span style="color: var(--error-color);">🔴 CERRADA</span>'}
+                  </span>
+                </div>
+                <div class="info-item" style="border-bottom: none; padding: 0;">
+                  <span class="info-label">Último Operador:</span>
+                  <span class="info-value" style="color: #fff;">${cajaState.updatedBy}</span>
+                </div>
+                <div class="info-item" style="border-bottom: none; padding: 0;">
+                  <span class="info-label">Última Modificación:</span>
+                  <span class="info-value">${new Date(cajaState.updatedAt).toLocaleString('es-AR')}</span>
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <button onclick="changeCajaState('open')" class="btn" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); margin-top: 0;">🔑 Abrir Caja</button>
+                <button onclick="changeCajaState('close')" class="btn" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); margin-top: 0;">🔒 Cerrar Caja</button>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2>📜 Historial de Apertura/Cierre</h2>
+              <div style="max-height: 350px; overflow-y: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+                  <thead>
+                    <tr style="border-bottom: 2px solid var(--border-color); color: var(--primary-color);">
+                      <th style="padding: 0.6rem;">Fecha/Hora</th>
+                      <th style="padding: 0.6rem;">Acción</th>
+                      <th style="padding: 0.6rem;">Usuario/Operador</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${cajaHistoryHtml || '<tr><td colspan="3" style="text-align: center; padding: 1rem; color: var(--text-muted);">No hay acciones registradas.</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -998,6 +1061,24 @@ app.get('/', async (req, res) => {
             }
           });
         }
+
+        async function changeCajaState(action) {
+          const url = action === 'open' ? '/api/vendedores/abrir-caja' : '/api/vendedores/cerrar-caja';
+          if (action === 'close' && !confirm('¿Estás seguro de que deseas cerrar la caja del evento? Se bloquearán todos los cobros y consultas.')) {
+            return;
+          }
+          try {
+            const res = await fetch(url, { method: 'POST' });
+            if (res.ok) {
+              showToast('Caja ' + (action === 'open' ? 'abierta' : 'cerrada') + ' con éxito.');
+              setTimeout(() => window.location.reload(), 1000);
+            } else {
+              showToast('Error al cambiar el estado de la caja.');
+            }
+          } catch(e) {
+            showToast('Error de conexión.');
+          }
+        }
       </script>
     </body>
     </html>
@@ -1021,8 +1102,9 @@ app.get('/sw.js', (req, res) => {
 });
 
 // Ruta para la interfaz móvil simplificada de El Pecado ("Pecar con Tarjeta")
-app.get('/pecar', (req, res) => {
+app.get('/pecar', async (req, res) => {
   const vendorName = getVendorFromCookie(req);
+  const caja = await getCajaState();
 
   res.send(`
     <!DOCTYPE html>
@@ -1044,6 +1126,7 @@ app.get('/pecar', (req, res) => {
           --primary-color: #ef4444;
           --primary-hover: #dc2626;
           --accent-color: #fbbf24;
+          --success-color: #10b981;
         }
         
         * {
@@ -1370,35 +1453,53 @@ app.get('/pecar', (req, res) => {
               📍 Evento: <strong>${vendorName}</strong>
             </div>
 
-            <div class="instructions">
-              Elige o digita el monto de tu colaboración para recibir tu ticket poético en el Point.
-            </div>
+            ${caja.status === 'open' ? `
+              <!-- CAJA ABIERTA: MOSTRAR CONTROLES DE COBRO -->
+              <div class="instructions">
+                Elige o digita el monto de tu colaboración para recibir tu ticket poético en el Point.
+              </div>
 
-            <div class="amount-display">
-              <span>$</span><span id="amountVal">200.00</span>
-            </div>
+              <div class="amount-display">
+                <span>$</span><span id="amountVal">200.00</span>
+              </div>
 
-            <div class="presets">
-              <button class="preset-btn" onclick="selectPreset(50)">$50</button>
-              <button class="preset-btn" onclick="selectPreset(100)">$100</button>
-              <button class="preset-btn active" onclick="selectPreset(200)">$200</button>
-              <button class="preset-btn" onclick="selectPreset(500)">$500</button>
-              <button class="preset-btn" onclick="selectPreset(1000)">$1000</button>
-              <button class="preset-btn" onclick="selectPreset(2000)">$2000</button>
-            </div>
+              <div class="presets">
+                <button class="preset-btn" onclick="selectPreset(50)">$50</button>
+                <button class="preset-btn" onclick="selectPreset(100)">$100</button>
+                <button class="preset-btn active" onclick="selectPreset(200)">$200</button>
+                <button class="preset-btn" onclick="selectPreset(500)">$500</button>
+                <button class="preset-btn" onclick="selectPreset(1000)">$1000</button>
+                <button class="preset-btn" onclick="selectPreset(2000)">$2000</button>
+              </div>
 
-            <div class="custom-input-container">
-              <span class="custom-input-symbol">Otro monto: $</span>
-              <input type="number" id="customAmount" class="custom-input" placeholder="Ej: 150" min="15" step="5" oninput="handleCustomInput()">
-            </div>
+              <div class="custom-input-container">
+                <span class="custom-input-symbol">Otro monto: $</span>
+                <input type="number" id="customAmount" class="custom-input" placeholder="Ej: 150" min="15" step="5" oninput="handleCustomInput()">
+              </div>
 
-            <button id="btnPecar" class="btn-action" onclick="enviarCobro()">
-              🍎 Pecar... digo Pagar
-            </button>
+              <button id="btnPecar" class="btn-action" onclick="enviarCobro()">
+                🍎 Pecar... digo Pagar
+              </button>
 
-            <button id="btnImprimirEfectivo" class="btn-action" style="margin-top: 1rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.25);" onclick="imprimirEfectivo()">
-              💵 Imprimir Poema (Efectivo)
-            </button>
+              <button id="btnImprimirEfectivo" class="btn-action" style="margin-top: 1rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.25);" onclick="imprimirEfectivo()">
+                💵 Imprimir Poema (Efectivo)
+              </button>
+
+              <div style="margin-top: 1.5rem; text-align: center; font-size: 0.85rem; color: var(--success-color); font-weight: bold; display: flex; flex-direction: column; gap: 0.6rem; align-items: center;">
+                <span>🟢 Caja abierta por: <strong>${caja.updatedBy}</strong></span>
+                <button onclick="handleCerrarCaja()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; text-decoration: underline; font-size: 0.8rem; font-weight: normal;">🔒 Cerrar Caja del Evento</button>
+              </div>
+            ` : `
+              <!-- CAJA CERRADA: BOTÓN DE APERTURA -->
+              <div class="instructions" style="color: var(--primary-color); font-weight: bold; font-size: 1.1rem; line-height: 1.5; margin-bottom: 2rem;">
+                ⚠️ La caja de cobros está CERRADA.<br>
+                <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: normal;">Debes abrir la caja para habilitar los cobros con tarjeta/efectivo y encolar impresiones.</span>
+              </div>
+
+              <button class="btn-action" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.25);" onclick="handleAbrirCaja()">
+                🔑 Abrir Caja y Habilitar Cobros
+              </button>
+            `}
 
             <div style="margin-top: 1.5rem; text-align: center;">
               <button onclick="handleVendorLogout()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; text-decoration: underline; font-size: 0.85rem;">Cerrar sesión de evento</button>
@@ -1494,12 +1595,50 @@ app.get('/pecar', (req, res) => {
           }
         }
 
+        // Abrir/Cerrar Caja
+        async function handleAbrirCaja() {
+          triggerVibration();
+          try {
+            const res = await fetch('/api/vendedores/abrir-caja', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+              showToast('🟢 Caja abierta correctamente. Cobros habilitados.');
+              setTimeout(() => window.location.reload(), 1000);
+            } else {
+              showToast('Error: ' + data.error);
+            }
+          } catch (e) {
+            showToast('Error de conexión.');
+          }
+        }
+
+        async function handleCerrarCaja() {
+          triggerVibration();
+          if (!confirm('¿Estás seguro de que deseas cerrar la caja del evento? Se bloquearán cobros e impresiones y se apagarán todas las consultas en segundo plano.')) {
+            return;
+          }
+          try {
+            const res = await fetch('/api/vendedores/cerrar-caja', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+              showToast('🔒 Caja cerrada correctamente. Llamadas inactivadas.');
+              setTimeout(() => window.location.reload(), 1000);
+            } else {
+              showToast('Error: ' + data.error);
+            }
+          } catch (e) {
+            showToast('Error de conexión.');
+          }
+        }
+
         // Operaciones de cobro
         function selectPreset(amount) {
           triggerVibration();
           activeAmount = amount;
-          document.getElementById('amountVal').textContent = amount.toFixed(2);
-          document.getElementById('customAmount').value = '';
+          const label = document.getElementById('amountVal');
+          if (label) label.textContent = amount.toFixed(2);
+          const custom = document.getElementById('customAmount');
+          if (custom) custom.value = '';
           
           const buttons = document.querySelectorAll('.preset-btn');
           buttons.forEach(btn => {
@@ -1517,12 +1656,15 @@ app.get('/pecar', (req, res) => {
           const buttons = document.querySelectorAll('.preset-btn');
           buttons.forEach(btn => btn.classList.remove('active'));
 
-          if (!isNaN(val) && val >= 15) {
-            activeAmount = val;
-            document.getElementById('amountVal').textContent = val.toFixed(2);
-          } else {
-            activeAmount = 0;
-            document.getElementById('amountVal').textContent = '0.00';
+          const label = document.getElementById('amountVal');
+          if (label) {
+            if (!isNaN(val) && val >= 15) {
+              activeAmount = val;
+              label.textContent = val.toFixed(2);
+            } else {
+              activeAmount = 0;
+              label.textContent = '0.00';
+            }
           }
         }
 
@@ -1603,12 +1745,14 @@ app.get('/pecar', (req, res) => {
         let toastTimer = null;
         function showToast(msg) {
           const toast = document.getElementById('toast');
-          toast.textContent = msg;
-          toast.style.display = 'block';
-          if (toastTimer) clearTimeout(toastTimer);
-          toastTimer = setTimeout(() => {
-            toast.style.display = 'none';
-          }, 4500);
+          if (toast) {
+            toast.textContent = msg;
+            toast.style.display = 'block';
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+              toast.style.display = 'none';
+            }, 4500);
+          }
         }
       </script>
     </body>
@@ -1683,6 +1827,11 @@ async function processBackgroundPrintJob(content, filename) {
 
 // Endpoint para imprimir logo + poema en efectivo (sin transacción de cobro)
 app.post('/print-logo-and-poem', async (req, res) => {
+  const caja = await getCajaState();
+  if (caja.status !== 'open') {
+    return res.status(400).json({ error: 'La caja está cerrada. Abra la caja para poder imprimir.' });
+  }
+
   const { amount } = req.body;
   const numericAmount = parseFloat(amount) || 200;
   const vendorName = getVendorFromCookie(req) || 'Sin Evento';
@@ -1722,6 +1871,11 @@ app.post('/print-logo-and-poem', async (req, res) => {
 
 // Endpoint para crear una orden de cobro en la terminal Point
 app.post('/create-order', async (req, res) => {
+  const caja = await getCajaState();
+  if (caja.status !== 'open') {
+    return res.status(400).json({ error: 'La caja está cerrada. Abra la caja para poder realizar cobros.' });
+  }
+
   const { amount, notificationUrl } = req.body;
   const accessToken = process.env.MP_ACCESS_TOKEN;
   const terminalId = process.env.MP_TERMINAL_ID;
@@ -2095,6 +2249,13 @@ async function startOrderPolling(orderId, maxAttempts = 100, intervalMs = 3000) 
   
   let attempts = 0;
   const timer = setInterval(async () => {
+    const caja = await getCajaState();
+    if (caja.status !== 'open') {
+      console.log(`[Polling] Deteniendo consulta de orden ${orderId} porque la caja fue cerrada.`);
+      clearInterval(timer);
+      return;
+    }
+
     attempts++;
     if (attempts > maxAttempts) {
       console.log(`[Polling] Se alcanzó el límite de tiempo para la orden ${orderId}. Finalizando consulta.`);
@@ -2151,6 +2312,12 @@ async function startOrderPolling(orderId, maxAttempts = 100, intervalMs = 3000) 
 
 // Endpoint de Webhooks para Mercado Pago
 app.post('/webhook', async (req, res) => {
+  const caja = await getCajaState();
+  if (caja.status !== 'open') {
+    console.log(`[Webhook] Notificación omitida porque la caja está cerrada.`);
+    return res.status(200).send('Caja cerrada');
+  }
+
   try {
     const { action, type, data, resource, id } = req.body;
     const topic = type || req.body.topic;
@@ -2316,6 +2483,55 @@ async function saveVendorRegistry(registry) {
   }
 }
 
+const CAJA_STATE_FILE = path.join(__dirname, '../caja_state.json');
+const CAJA_HISTORY_FILE = path.join(__dirname, '../caja_history.json');
+
+async function getCajaState() {
+  try {
+    if (fs.existsSync(CAJA_STATE_FILE)) {
+      const data = await fs.promises.readFile(CAJA_STATE_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('Error leyendo estado de caja:', e);
+  }
+  return { status: 'closed', updatedBy: 'Sistema', updatedAt: new Date().toISOString() };
+}
+
+async function saveCajaState(state) {
+  try {
+    await fs.promises.writeFile(CAJA_STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error guardando estado de caja:', e);
+  }
+}
+
+async function getCajaHistory() {
+  try {
+    if (fs.existsSync(CAJA_HISTORY_FILE)) {
+      const data = await fs.promises.readFile(CAJA_HISTORY_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('Error leyendo historial de caja:', e);
+  }
+  return [];
+}
+
+async function logCajaAction(action, user) {
+  try {
+    const history = await getCajaHistory();
+    history.push({
+      action,
+      user,
+      timestamp: new Date().toISOString()
+    });
+    await fs.promises.writeFile(CAJA_HISTORY_FILE, JSON.stringify(history, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error guardando historial de caja:', e);
+  }
+}
+
 async function getTaxesConfig() {
   try {
     if (fs.existsSync(TAXES_CONFIG_FILE)) {
@@ -2378,6 +2594,30 @@ app.post('/api/vendedores/register', async (req, res) => {
 app.post('/api/vendedores/logout', (req, res) => {
   res.clearCookie('vendor_session', { path: '/' });
   return res.json({ success: true });
+});
+
+app.post('/api/vendedores/abrir-caja', async (req, res) => {
+  const vendorName = getVendorFromCookie(req) || getAuthorFromCookie(req) || 'Administrador';
+  const state = {
+    status: 'open',
+    updatedBy: vendorName,
+    updatedAt: new Date().toISOString()
+  };
+  await saveCajaState(state);
+  await logCajaAction('open', vendorName);
+  return res.json({ success: true, state });
+});
+
+app.post('/api/vendedores/cerrar-caja', async (req, res) => {
+  const vendorName = getVendorFromCookie(req) || getAuthorFromCookie(req) || 'Administrador';
+  const state = {
+    status: 'closed',
+    updatedBy: vendorName,
+    updatedAt: new Date().toISOString()
+  };
+  await saveCajaState(state);
+  await logCajaAction('close', vendorName);
+  return res.json({ success: true, state });
 });
 
 // --- Cuentas con privilegios de Administrador ---
@@ -2588,6 +2828,8 @@ app.get('/api/admin/dashboard-data', async (req, res) => {
   } catch (e) {}
 
   const config = await getTaxesConfig();
+  const cajaState = await getCajaState();
+  const cajaHistory = await getCajaHistory();
 
   return res.json({
     config,
@@ -2602,7 +2844,9 @@ app.get('/api/admin/dashboard-data', async (req, res) => {
       rfcShareValue: econ.rfcShareValue
     },
     authors: econ.authorsList,
-    payments: [...econ.payments].reverse().slice(0, 100)
+    payments: [...econ.payments].reverse().slice(0, 100),
+    cajaState,
+    cajaHistory
   });
 });
 

@@ -28,5 +28,35 @@
     "paperCost": 20,
     "netAmount": 455,
     "reserveAllocated": 273
+  },
+  {
+    "paymentId": "cash_1783398863287",
+    "amount": 500,
+    "timestamp": "2026-07-07T04:34:23.294Z",
+    "filename": "agustini.txt",
+    "author": "Delmira Agustini",
+    "title": "EXPLOSIÓN",
+    "vendor": "Sin Evento",
+    "type": "cash",
+    "mpFee": 0,
+    "taxValue": 25,
+    "paperCost": 20,
+    "netAmount": 455,
+    "reserveAllocated": 273
+  },
+  {
+    "paymentId": "cash_1783398919423",
+    "amount": 500,
+    "timestamp": "2026-07-07T04:35:19.428Z",
+    "filename": "goyo.txt",
+    "author": "Goyo.art3",
+    "title": "Esto papeludo",
+    "vendor": "Feria de Libros 2026",
+    "type": "cash",
+    "mpFee": 0,
+    "taxValue": 25,
+    "paperCost": 20,
+    "netAmount": 455,
+    "reserveAllocated": 273
   }
 ]
