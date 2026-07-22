@@ -6,7 +6,8 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { getRandomPoem, parsePoemMetadata } from './poems.js';
+import { getRandomPoem, parsePoemMetadata, getAllPoems } from './poems.js';
+import { appendAuditRow, getSheetsStatus } from './googleSheetsService.js';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -58,7 +59,7 @@ function wrapText(text, limit = 30) {
   return lines;
 }
 
-// Formatear poema con las etiquetas nativas de impresión de Mercado Pago
+// Formatear poema con las etiquetas nativas de impresión de Mercado Pago (Optimizado para Ahorro de Papel)
 function formatPoemForPoint(poem) {
   const originalLines = poem.split('\n');
   const formattedLines = [];
@@ -76,17 +77,18 @@ function formatPoemForPoint(poem) {
     }
   }
 
-  let content = `{br}{center}{b}{w}✿ UN POEMA PARA TI ✿{/w}{/b}{/center}{br}{br}`;
+  // Sin {br} al principio para pegar el texto lo más posible al logotipo
+  let content = `{center}{b}{w}✿ UN POEMA PARA TI ✿{/w}{/b}{/center}{br}`;
   content += formattedLines.join('{br}');
-  content += `{br}{br}{center}* * * * *{/center}{br}`;
-  content += `{center}{s}Gracias por tu colaboración{/s}{/center}{br}`;
-  content += `{center}{s}y por apoyar el arte.{/s}{/center}{br}`;
-  content += `{center}{b}elpecado.ar{/b}{/center}{br}{br}{br}`;
+  content += `{br}{center}* * * * *{/center}`;
+  content += `{center}{s}Gracias por tu colaboración{/s}{/center}`;
+  content += `{center}{s}y por apoyar el arte.{/s}{/center}`;
+  content += `{center}{b}elpecado.ar{/b}{/center}`;
 
-  // La API requiere entre 100 y 4096 caracteres.
-  // Si es muy corto, le agregamos saltos de línea al final para cumplir con el mínimo.
+  // La API requiere al menos 100 caracteres.
+  // Rellenar con espacios en blanco en lugar de saltos de línea para NO desperdiciar papel.
   while (content.length < 110) {
-    content += '{br}';
+    content += ' ';
   }
 
   return content;
@@ -1095,6 +1097,35 @@ app.get('/manifest.json', (req, res) => {
   res.sendFile(path.join(__dirname, 'manifest.json'));
 });
 
+// Ruta para obtener todos los poemas y sincronizar el celular (Modo Offline)
+app.get('/api/poemas/all', async (req, res) => {
+  try {
+    const poems = await getAllPoems();
+    res.json({
+      success: true,
+      poems,
+      logoAvailable: !!logoBase64
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al sincronizar catálogo de poemas' });
+  }
+});
+
+// Ruta de estado de la Auditoría en la Nube (Google Sheets & Ripio)
+app.get('/api/audit/status', async (req, res) => {
+  try {
+    const sheetsStatus = await getSheetsStatus();
+    res.json({
+      success: true,
+      googleSheets: sheetsStatus,
+      targetWallet: 'Ripio (ARS / USDC)',
+      auditMode: 'Persistencia Perpetua en la Nube (Google Sheets API)'
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al consultar estado de auditoría' });
+  }
+});
+
 // Ruta para servir el Service Worker de la PWA
 app.get('/sw.js', (req, res) => {
   res.set('Content-Type', 'application/javascript');
@@ -1105,6 +1136,123 @@ app.get('/sw.js', (req, res) => {
 app.get('/pecar', async (req, res) => {
   const vendorName = getVendorFromCookie(req);
   const caja = await getCajaState();
+
+  let bodyContent = '';
+  if (!vendorName) {
+    bodyContent = `
+      <!-- PANTALLA DE ACCESO DE VENDEDOR / EVENTO -->
+      <div class="card">
+        <div class="instructions">
+          Ingresa el nombre del evento o punto de venta (ej: <strong>Feria del Libro 2026</strong>) para habilitar el cobro Point.
+        </div>
+
+        <form id="formVendorAuth" onsubmit="handleVendorAuth(event)">
+          <div class="form-group">
+            <label for="vendorNameInput">Nombre del Evento / Vendedor</label>
+            <input type="text" id="vendorNameInput" class="form-control" placeholder="Ej: Feria del Libro" required autocomplete="off">
+          </div>
+
+          <button type="submit" id="btnVendorAuth" class="btn-action">Iniciar Sesión de Evento</button>
+        </form>
+
+        <div style="margin-top: 1.5rem; text-align: center; font-size: 0.85rem;">
+          <a href="#" onclick="showRegisterForm(event)" style="color: var(--accent-color); text-decoration: none;">¿Es un evento nuevo? Regístralo aquí</a>
+        </div>
+
+        <!-- Registro de nuevo vendedor -->
+        <div id="vendorRegisterSection" style="display: none; margin-top: 1.5rem; border-top: 1px dashed var(--border-color); padding-top: 1.5rem;">
+          <h3 style="font-family: 'Playfair Display', serif; color: #fff; margin-bottom: 1rem; font-size: 1.2rem;">Registrar Nuevo Evento</h3>
+          
+          <div class="form-group">
+            <label for="regVendorName">Nombre del Evento (Firma única)</label>
+            <input type="text" id="regVendorName" class="form-control" placeholder="Ej: Teatro El Pecado">
+          </div>
+
+          <div class="form-group">
+            <label for="regVendorDesc">Descripción / Detalles (Opcional)</label>
+            <input type="text" id="regVendorDesc" class="form-control" placeholder="Ej: Función del 4 de Julio">
+          </div>
+
+          <button type="button" onclick="handleVendorRegister()" class="btn-action" style="background: linear-gradient(135deg, var(--accent-color) 0%, #d97706 100%); color: #0b0303; box-shadow: none;">Crear e Iniciar Sesión</button>
+        </div>
+      </div>
+    `;
+  } else {
+    let cajaContent = '';
+    if (caja.status === 'open') {
+      cajaContent = `
+        <div class="instructions">
+          Elige el monto para el cobro o imprime directo un ticket poético.
+        </div>
+
+        <div class="amount-display">
+          <span>$</span><span id="amountVal">200.00</span>
+        </div>
+
+        <div class="presets">
+          <button class="preset-btn" onclick="selectPreset(50)">$50</button>
+          <button class="preset-btn" onclick="selectPreset(100)">$100</button>
+          <button class="preset-btn active" onclick="selectPreset(200)">$200</button>
+          <button class="preset-btn" onclick="selectPreset(500)">$500</button>
+          <button class="preset-btn" onclick="selectPreset(1000)">$1000</button>
+          <button class="preset-btn" onclick="selectPreset(2000)">$2000</button>
+        </div>
+
+        <div class="custom-input-container">
+          <span class="custom-input-symbol">Otro monto: $</span>
+          <input type="number" id="customAmount" class="custom-input" placeholder="Ej: 150" min="15" step="5" oninput="handleCustomInput()">
+        </div>
+
+        <button id="btnPecar" class="btn-action" onclick="enviarCobro()">
+          🍎 Pecar... digo Pagar (Tarjeta)
+        </button>
+
+        <button id="btnImprimirEfectivo" class="btn-action" style="margin-top: 0.8rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.25);" onclick="imprimirEfectivo()">
+          💵 Imprimir Poema (Efectivo)
+        </button>
+
+        <button type="button" class="preset-btn" style="width: 100%; margin-top: 0.8rem; padding: 0.8rem; background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.25); color: var(--accent-color);" onclick="verPoemaOffline()">
+          🎲 Ver Poema Guardado en el Celu
+        </button>
+
+        <div style="margin-top: 1.5rem; text-align: center; font-size: 0.85rem; color: var(--success-color); font-weight: bold; display: flex; flex-direction: column; gap: 0.6rem; align-items: center;">
+          <span>🟢 Caja abierta por: <strong>${caja.updatedBy || vendorName}</strong></span>
+          <button onclick="handleCerrarCaja()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; text-decoration: underline; font-size: 0.8rem; font-weight: normal;">🔒 Cerrar Caja del Evento</button>
+        </div>
+      `;
+    } else {
+      cajaContent = `
+        <div class="instructions" style="color: var(--primary-color); font-weight: bold; font-size: 1.1rem; line-height: 1.5; margin-bottom: 2rem;">
+          ⚠️ La caja de cobros está CERRADA.<br>
+          <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: normal;">Debes abrir la caja para habilitar los cobros con tarjeta/efectivo.</span>
+        </div>
+
+        <button class="btn-action" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.25);" onclick="handleAbrirCaja()">
+          🔑 Abrir Caja y Habilitar Cobros
+        </button>
+      `;
+    }
+
+    bodyContent = `
+      <!-- INTERFAZ DE COBRO ACTIVA -->
+      <div class="card">
+        <div class="event-badge">
+          📍 Evento: <strong>${vendorName}</strong>
+        </div>
+
+        <!-- Banner de Estado de Red / Modo Offline -->
+        <div id="netStatusBadge" style="margin-bottom: 1rem; padding: 0.5rem 0.8rem; border-radius: 12px; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 0.4rem; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981; transition: all 0.3s ease;">
+          <span id="netStatusDot">🟢</span> <span id="netStatusText">Conectado | Cocheando poemas en tu celu...</span>
+        </div>
+
+        ${cajaContent}
+
+        <div style="margin-top: 1.5rem; text-align: center;">
+          <button onclick="handleVendorLogout()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; text-decoration: underline; font-size: 0.85rem;">Cerrar sesión de evento</button>
+        </div>
+      </div>
+    `;
+  }
 
   res.send(`
     <!DOCTYPE html>
@@ -1409,103 +1557,7 @@ app.get('/pecar', async (req, res) => {
         <h1>El Pecado</h1>
         <div class="tagline">¿Cuál será tu tentación esta noche?</div>
 
-        ${!vendorName ? `
-          <!-- PANTALLA DE ACCESO DE VENDEDOR / EVENTO -->
-          <div class="card">
-            <div class="instructions">
-              Ingresa el nombre del evento o punto de venta (ej: <strong>Feria del Libro 2026</strong>) para habilitar el cobro Point.
-            </div>
-
-            <form id="formVendorAuth" onsubmit="handleVendorAuth(event)">
-              <div class="form-group">
-                <label for="vendorNameInput">Nombre del Evento / Vendedor</label>
-                <input type="text" id="vendorNameInput" class="form-control" placeholder="Ej: Feria del Libro" required autocomplete="off">
-              </div>
-
-              <button type="submit" id="btnVendorAuth" class="btn-action">Iniciar Sesión de Evento</button>
-            </form>
-
-            <div style="margin-top: 1.5rem; text-align: center; font-size: 0.85rem;">
-              <a href="#" onclick="showRegisterForm(event)" style="color: var(--accent-color); text-decoration: none;">¿Es un evento nuevo? Regístralo aquí</a>
-            </div>
-
-            <!-- Registro de nuevo vendedor -->
-            <div id="vendorRegisterSection" style="display: none; margin-top: 1.5rem; border-top: 1px dashed var(--border-color); padding-top: 1.5rem;">
-              <h3 style="font-family: 'Playfair Display', serif; color: #fff; margin-bottom: 1rem; font-size: 1.2rem;">Registrar Nuevo Evento</h3>
-              
-              <div class="form-group">
-                <label for="regVendorName">Nombre del Evento (Firma única)</label>
-                <input type="text" id="regVendorName" class="form-control" placeholder="Ej: Teatro El Pecado">
-              </div>
-
-              <div class="form-group">
-                <label for="regVendorDesc">Descripción / Detalles (Opcional)</label>
-                <input type="text" id="regVendorDesc" class="form-control" placeholder="Ej: Función del 4 de Julio">
-              </div>
-
-              <button type="button" onclick="handleVendorRegister()" class="btn-action" style="background: linear-gradient(135deg, var(--accent-color) 0%, #d97706 100%); color: #0b0303; box-shadow: none;">Crear e Iniciar Sesión</button>
-            </div>
-          </div>
-        ` : `
-          <!-- INTERFAZ DE COBRO ACTIVA -->
-          <div class="card">
-            <div class="event-badge">
-              📍 Evento: <strong>${vendorName}</strong>
-            </div>
-
-            ${caja.status === 'open' ? `
-              <!-- CAJA ABIERTA: MOSTRAR CONTROLES DE COBRO -->
-              <div class="instructions">
-                Elige o digita el monto de tu colaboración para recibir tu ticket poético en el Point.
-              </div>
-
-              <div class="amount-display">
-                <span>$</span><span id="amountVal">200.00</span>
-              </div>
-
-              <div class="presets">
-                <button class="preset-btn" onclick="selectPreset(50)">$50</button>
-                <button class="preset-btn" onclick="selectPreset(100)">$100</button>
-                <button class="preset-btn active" onclick="selectPreset(200)">$200</button>
-                <button class="preset-btn" onclick="selectPreset(500)">$500</button>
-                <button class="preset-btn" onclick="selectPreset(1000)">$1000</button>
-                <button class="preset-btn" onclick="selectPreset(2000)">$2000</button>
-              </div>
-
-              <div class="custom-input-container">
-                <span class="custom-input-symbol">Otro monto: $</span>
-                <input type="number" id="customAmount" class="custom-input" placeholder="Ej: 150" min="15" step="5" oninput="handleCustomInput()">
-              </div>
-
-              <button id="btnPecar" class="btn-action" onclick="enviarCobro()">
-                🍎 Pecar... digo Pagar
-              </button>
-
-              <button id="btnImprimirEfectivo" class="btn-action" style="margin-top: 1rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.25);" onclick="imprimirEfectivo()">
-                💵 Imprimir Poema (Efectivo)
-              </button>
-
-              <div style="margin-top: 1.5rem; text-align: center; font-size: 0.85rem; color: var(--success-color); font-weight: bold; display: flex; flex-direction: column; gap: 0.6rem; align-items: center;">
-                <span>🟢 Caja abierta por: <strong>${caja.updatedBy}</strong></span>
-                <button onclick="handleCerrarCaja()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; text-decoration: underline; font-size: 0.8rem; font-weight: normal;">🔒 Cerrar Caja del Evento</button>
-              </div>
-            ` : `
-              <!-- CAJA CERRADA: BOTÓN DE APERTURA -->
-              <div class="instructions" style="color: var(--primary-color); font-weight: bold; font-size: 1.1rem; line-height: 1.5; margin-bottom: 2rem;">
-                ⚠️ La caja de cobros está CERRADA.<br>
-                <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: normal;">Debes abrir la caja para habilitar los cobros con tarjeta/efectivo y encolar impresiones.</span>
-              </div>
-
-              <button class="btn-action" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.25);" onclick="handleAbrirCaja()">
-                🔑 Abrir Caja y Habilitar Cobros
-              </button>
-            `}
-
-            <div style="margin-top: 1.5rem; text-align: center;">
-              <button onclick="handleVendorLogout()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; text-decoration: underline; font-size: 0.85rem;">Cerrar sesión de evento</button>
-            </div>
-          </div>
-        `}
+        ${bodyContent}
 
         <div class="footer">
           EL PECADO TEATRO &bull; ELPECADO.AR
@@ -1514,8 +1566,100 @@ app.get('/pecar', async (req, res) => {
 
       <div id="toast" class="toast"></div>
 
+      <!-- Modal Visor Poético Offline -->
+      <div id="poemPreviewModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); z-index: 200; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem;">
+        <div class="card" style="width: 100%; max-width: 380px; max-height: 80vh; overflow-y: auto; text-align: center; position: relative;">
+          <button onclick="cerrarPoemaOffline()" style="position: absolute; top: 1rem; right: 1rem; background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer;">&times;</button>
+          <div style="font-size: 0.8rem; color: var(--accent-color); font-weight: bold; margin-bottom: 0.5rem; text-transform: uppercase;">📜 Poema Guardado en Celular</div>
+          <h3 id="modalPoemTitle" style="font-family: 'Playfair Display', serif; color: #fff; margin-bottom: 0.3rem;">Título del Poema</h3>
+          <div id="modalPoemAuthor" style="font-size: 0.85rem; color: var(--text-muted); font-style: italic; margin-bottom: 1rem;">por Autor</div>
+          <div id="modalPoemBody" style="font-size: 0.9rem; line-height: 1.6; color: #fbecec; background: rgba(0,0,0,0.4); padding: 1rem; border-radius: 12px; border: 1px dashed var(--border-color); white-space: pre-line; text-align: left; margin-bottom: 1.2rem;"></div>
+          
+          <button class="preset-btn" style="width: 100%; background: var(--primary-color); color: white;" onclick="verPoemaOffline()">🎲 Probar Otro Poema</button>
+          <button class="preset-btn" style="width: 100%; margin-top: 0.5rem;" onclick="cerrarPoemaOffline()">Cerrar Visor</button>
+        </div>
+      </div>
+
       <script>
         let activeAmount = 200;
+        let cachedPoemsList = [];
+
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch(err => console.warn('[PWA] Error SW:', err));
+          });
+        }
+
+        async function syncPoemsToPhone() {
+          try {
+            const stored = localStorage.getItem('pecado_cached_poems');
+            if (stored) cachedPoemsList = JSON.parse(stored);
+          } catch(e) {}
+
+          if (navigator.onLine) {
+            try {
+              const res = await fetch('/api/poemas/all');
+              if (res.ok) {
+                const data = await res.json();
+                if (data.success && Array.isArray(data.poems)) {
+                  cachedPoemsList = data.poems;
+                  localStorage.setItem('pecado_cached_poems', JSON.stringify(cachedPoemsList));
+                  updateNetStatusUI(true, 'Conectado | ' + cachedPoemsList.length + ' poemas listos');
+                }
+              }
+            } catch(e) {}
+          } else {
+            updateNetStatusUI(false, 'Sin Internet | ' + cachedPoemsList.length + ' poemas listos');
+          }
+        }
+
+        function updateNetStatusUI(online, text) {
+          const badge = document.getElementById('netStatusBadge');
+          const dot = document.getElementById('netStatusDot');
+          const txt = document.getElementById('netStatusText');
+          if (badge && dot && txt) {
+            if (online) {
+              badge.style.background = 'rgba(16, 185, 129, 0.1)';
+              badge.style.borderColor = 'rgba(16, 185, 129, 0.2)';
+              badge.style.color = '#10b981';
+              dot.textContent = '🟢';
+            } else {
+              badge.style.background = 'rgba(245, 158, 11, 0.1)';
+              badge.style.borderColor = 'rgba(245, 158, 11, 0.25)';
+              badge.style.color = '#f59e0b';
+              dot.textContent = '🟠';
+            }
+            txt.textContent = text;
+          }
+        }
+
+        window.addEventListener('online', () => { syncPoemsToPhone(); processOfflineQueue(); });
+        window.addEventListener('offline', () => { updateNetStatusUI(false, 'Sin Internet | ' + cachedPoemsList.length + ' poemas listos en el celu'); });
+
+        // Inicializar sincronización al cargar la pantalla
+        syncPoemsToPhone();
+
+        // Mostrar un poema aleatorio desde el caché del celular
+        function verPoemaOffline() {
+          if (!cachedPoemsList || cachedPoemsList.length === 0) {
+            showToast('Cargando catálogo de poemas...');
+            syncPoemsToPhone();
+            return;
+          }
+
+          const randomIndex = Math.floor(Math.random() * cachedPoemsList.length);
+          const poem = cachedPoemsList[randomIndex];
+          
+          document.getElementById('modalPoemTitle').textContent = poem.title || poem.filename;
+          document.getElementById('modalPoemAuthor').textContent = 'por ' + (poem.author || 'Anónimo');
+          document.getElementById('modalPoemBody').textContent = poem.content;
+
+          document.getElementById('poemPreviewModal').style.display = 'flex';
+        }
+
+        function cerrarPoemaOffline() {
+          document.getElementById('poemPreviewModal').style.display = 'none';
+        }
 
         function triggerVibration() {
           if (navigator.vibrate) {
@@ -1545,7 +1689,7 @@ app.get('/pecar', async (req, res) => {
             if (data.success) {
               window.location.reload();
             } else if (data.notRegistered) {
-              showToast('El evento/vendedor no está registrado. Regístralo abajo.');
+              showToast('El evento/vendedor no está registrado.');
               document.getElementById('vendorRegisterSection').style.display = 'block';
             }
           } catch(e) {
@@ -1565,11 +1709,7 @@ app.get('/pecar', async (req, res) => {
         async function handleVendorRegister() {
           const vendorName = document.getElementById('regVendorName').value.trim();
           const description = document.getElementById('regVendorDesc').value.trim();
-
-          if (!vendorName) {
-            showToast('El nombre del evento es obligatorio.');
-            return;
-          }
+          if (!vendorName) { showToast('El nombre del evento es obligatorio.'); return; }
 
           try {
             const res = await fetch('/api/vendedores/register', {
@@ -1577,22 +1717,13 @@ app.get('/pecar', async (req, res) => {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ vendorName, description })
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Error al registrar evento');
-
+            if (!res.ok) throw new Error('Error al registrar evento');
             window.location.reload();
-          } catch (e) {
-            showToast(e.message);
-          }
+          } catch (e) { showToast(e.message); }
         }
 
         async function handleVendorLogout() {
-          try {
-            await fetch('/api/vendedores/logout', { method: 'POST' });
-            window.location.reload();
-          } catch (e) {
-            window.location.reload();
-          }
+          try { await fetch('/api/vendedores/logout', { method: 'POST' }); window.location.reload(); } catch (e) { window.location.reload(); }
         }
 
         // Abrir/Cerrar Caja
@@ -1600,28 +1731,25 @@ app.get('/pecar', async (req, res) => {
           triggerVibration();
           try {
             const res = await fetch('/api/vendedores/abrir-caja', { method: 'POST' });
-            const data = await res.json();
             if (res.ok) {
               showToast('🟢 Caja abierta correctamente. Cobros habilitados.');
               setTimeout(() => window.location.reload(), 1000);
             } else {
-              showToast('Error: ' + data.error);
+              showToast('Error al abrir caja.');
             }
-          } catch (e) {
-            showToast('Error de conexión.');
-          }
+          } catch (e) { showToast('Error de conexión.'); }
         }
 
         async function handleCerrarCaja() {
           triggerVibration();
-          if (!confirm('¿Estás seguro de que deseas cerrar la caja del evento? Se bloquearán cobros e impresiones y se apagarán todas las consultas en segundo plano.')) {
+          if (!confirm('¿Estás seguro de que deseas cerrar la caja del evento? Se bloquearán cobros e impresiones.')) {
             return;
           }
           try {
             const res = await fetch('/api/vendedores/cerrar-caja', { method: 'POST' });
             const data = await res.json();
             if (res.ok) {
-              showToast('🔒 Caja cerrada correctamente. Llamadas inactivadas.');
+              showToast('🔒 Caja cerrada correctamente.');
               setTimeout(() => window.location.reload(), 1000);
             } else {
               showToast('Error: ' + data.error);
@@ -1640,40 +1768,25 @@ app.get('/pecar', async (req, res) => {
           const custom = document.getElementById('customAmount');
           if (custom) custom.value = '';
           
-          const buttons = document.querySelectorAll('.preset-btn');
-          buttons.forEach(btn => {
-            if (btn.textContent === '$' + amount) {
-              btn.classList.add('active');
-            } else {
-              btn.classList.remove('active');
-            }
+          document.querySelectorAll('.preset-btn').forEach(btn => {
+            if (btn.textContent === '$' + amount) btn.classList.add('active');
+            else btn.classList.remove('active');
           });
         }
 
         function handleCustomInput() {
           const val = parseFloat(document.getElementById('customAmount').value);
-          
-          const buttons = document.querySelectorAll('.preset-btn');
-          buttons.forEach(btn => btn.classList.remove('active'));
-
+          document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
           const label = document.getElementById('amountVal');
           if (label) {
-            if (!isNaN(val) && val >= 15) {
-              activeAmount = val;
-              label.textContent = val.toFixed(2);
-            } else {
-              activeAmount = 0;
-              label.textContent = '0.00';
-            }
+            if (!isNaN(val) && val >= 15) { activeAmount = val; label.textContent = val.toFixed(2); }
+            else { activeAmount = 0; label.textContent = '0.00'; }
           }
         }
 
         async function enviarCobro() {
           triggerVibration();
-          if (activeAmount < 15) {
-            showToast('El monto mínimo para pecar es de $15.00 ARS');
-            return;
-          }
+          if (activeAmount < 15) { showToast('El monto mínimo es $15.00'); return; }
 
           const btn = document.getElementById('btnPecar');
           btn.disabled = true;
@@ -1682,19 +1795,13 @@ app.get('/pecar', async (req, res) => {
           try {
             const response = await fetch('/create-order', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                amount: activeAmount,
-                notificationUrl: window.location.origin + '/webhook'
-              })
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ amount: activeAmount })
             });
 
             const data = await response.json();
-
             if (response.ok) {
-              showToast('¡Monto enviado! Pasá la tarjeta en la terminal Point.');
+              showToast('¡Monto enviado! Pasá la tarjeta en la terminal.');
             } else {
               showToast('Error: ' + data.error);
             }
@@ -1703,7 +1810,7 @@ app.get('/pecar', async (req, res) => {
           } finally {
             setTimeout(() => {
               btn.disabled = false;
-              btn.textContent = '🍎 Pecar... digo Pagar';
+              btn.textContent = '🍎 Pecar... digo Pagar (Tarjeta)';
             }, 2000);
           }
         }
@@ -1714,31 +1821,67 @@ app.get('/pecar', async (req, res) => {
           btn.disabled = true;
           btn.textContent = '💵 Enviando a ticketera...';
 
+          if (!navigator.onLine) {
+            let queue = [];
+            try { queue = JSON.parse(localStorage.getItem('pecado_offline_queue') || '[]'); } catch(e){}
+            queue.push({ amount: activeAmount, timestamp: Date.now() });
+            localStorage.setItem('pecado_offline_queue', JSON.stringify(queue));
+            
+            showToast('📱 Registrado Offline ($' + activeAmount + '). Se sincronizará automáticamente al recuperar señal.');
+            btn.disabled = false;
+            btn.textContent = '💵 Imprimir Poema (Efectivo)';
+            return;
+          }
+
           try {
             const response = await fetch('/print-logo-and-poem', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                amount: activeAmount
-              })
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ amount: activeAmount })
             });
 
             const data = await response.json();
-
             if (response.ok) {
-              showToast('✨ Impresión enviada. La ticketera imprimirá logo y poema en segundo plano.');
+              showToast('✨ Impresión enviada. La ticketera imprimirá de inmediato.');
             } else {
               showToast('Error: ' + data.error);
             }
           } catch (err) {
-            showToast('Error de conexión con el servidor.');
+            showToast('Sin señal. Guardando cobro en celular...');
+            let queue = [];
+            try { queue = JSON.parse(localStorage.getItem('pecado_offline_queue') || '[]'); } catch(e){}
+            queue.push({ amount: activeAmount, timestamp: Date.now() });
+            localStorage.setItem('pecado_offline_queue', JSON.stringify(queue));
           } finally {
             setTimeout(() => {
               btn.disabled = false;
               btn.textContent = '💵 Imprimir Poema (Efectivo)';
-            }, 2500);
+            }, 1500);
+          }
+        }
+
+        async function processOfflineQueue() {
+          let queue = [];
+          try { queue = JSON.parse(localStorage.getItem('pecado_offline_queue') || '[]'); } catch(e){}
+          if (queue.length === 0) return;
+
+          showToast('🔄 Sincronizando ' + queue.length + ' cobro(s) offline...');
+          const remaining = [];
+          for (const item of queue) {
+            try {
+              const res = await fetch('/print-logo-and-poem', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: item.amount })
+              });
+              if (!res.ok) remaining.push(item);
+            } catch(e) {
+              remaining.push(item);
+            }
+          }
+          localStorage.setItem('pecado_offline_queue', JSON.stringify(remaining));
+          if (remaining.length === 0) {
+            showToast('✅ ¡Sincronización offline completada!');
           }
         }
 
@@ -1800,7 +1943,7 @@ async function processBackgroundPrintJob(content, filename) {
           () => printImageOnTerminal(),
           'Logo'
         );
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise(resolve => setTimeout(resolve, 800));
       }
     } catch (imgError) {
       console.error('[Impresora-Fondo] Falló logotipo:', imgError.message);
@@ -2120,6 +2263,10 @@ async function recordPayment(paymentId, amount, filename, author, title, vendor 
     const netAmount = grossAmount - mpFee - taxValue - paperCost;
     const reserveAllocated = Math.max(0, netAmount * (config.reservePercent / 100));
     
+    // Determinar la clasificación de derechos de autor (Vivo vs. Dominio Público)
+    const copyrightInfo = getCopyrightStatus(author);
+    const copyrightStatus = copyrightInfo.label;
+
     history.push({
       paymentId: paymentId.toString(),
       amount: grossAmount,
@@ -2127,6 +2274,7 @@ async function recordPayment(paymentId, amount, filename, author, title, vendor 
       filename,
       author,
       title,
+      copyrightStatus,
       vendor: vendor || 'Sin Evento',
       type: isCash ? 'cash' : 'card',
       mpFee,
@@ -2141,7 +2289,23 @@ async function recordPayment(paymentId, amount, filename, author, title, vendor 
       history = history.slice(-1000);
     }
     await fs.promises.writeFile(PAYMENT_HISTORY_FILE, JSON.stringify(history, null, 2), 'utf8');
-    console.log(`[Historial] Pago ${paymentId} ($${grossAmount}) registrado correctamente (Vendedor: ${vendor}, Neto: $${netAmount}, Reserva: $${reserveAllocated}).`);
+    console.log(`[Historial] Pago ${paymentId} ($${grossAmount}) registrado correctamente (Vendedor: ${vendor}, Neto: $${netAmount}, Reserva RFC: $${reserveAllocated}).`);
+
+    // Sincronizar en segundo plano con Google Sheets API para auditoría perpetua en la nube
+    appendAuditRow({
+      paymentId: paymentId.toString(),
+      amount: grossAmount,
+      filename,
+      author,
+      title,
+      vendorName: vendor || 'Sin Evento',
+      copyrightStatus,
+      mpFeeValue: mpFee,
+      taxValue,
+      paperCost,
+      netAmount,
+      reserveAllocated
+    }).catch(sheetErr => console.error('[GoogleSheets] Error en segundo plano:', sheetErr.message));
   } catch (err) {
     console.error('[Historial] Error al registrar pago en el historial de transacciones:', err);
   }
@@ -2217,8 +2381,8 @@ async function processApprovedPayment(paymentId, amount, orderId = null) {
         () => printImageOnTerminal(),
         'Logo'
       );
-      // Pausa de 5 segundos para asegurar que el papel del logotipo termine de salir antes de enviar el poema
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // Pausa rápida de 800ms para agilizar la impresión continua
+      await new Promise(resolve => setTimeout(resolve, 800));
     }
   } catch (imgError) {
     console.error('[Impresora] Falló definitivamente la impresión del logotipo:', imgError.message);

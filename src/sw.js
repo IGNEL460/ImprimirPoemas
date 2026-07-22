@@ -1,8 +1,10 @@
-const CACHE_NAME = 'el-pecado-v1';
+const CACHE_NAME = 'el-pecado-v2';
 const ASSETS = [
+  '/',
   '/pecar',
   '/logo.jpg',
-  '/manifest.json'
+  '/manifest.json',
+  '/api/poemas/all'
 ];
 
 // Instalar el Service Worker y almacenar en caché los recursos básicos
