@@ -21,7 +21,7 @@ const logoPath = path.join(__dirname, 'logo.jpg');
 try {
   if (fs.existsSync(logoPath)) {
     logoBase64 = fs.readFileSync(logoPath, 'base64');
-    console.log('[Impresora] Imagen de logo cargada y convertida a Base64.');
+    console.log(`[Impresora] Imagen de logo optimizada cargada (${Math.round(logoBase64.length / 1024)} KB Base64).`);
   } else {
     console.warn('[Impresora] Advertencia: No se encontró la imagen de logo en:', logoPath);
   }
@@ -140,6 +140,10 @@ async function printOnTerminal(text) {
 
 // Enviar logotipo del Pecado a la terminal (Imagen Base64)
 async function printImageOnTerminal() {
+  if (!logoBase64 && fs.existsSync(logoPath)) {
+    try { logoBase64 = fs.readFileSync(logoPath, 'base64'); } catch(e){}
+  }
+
   if (!logoBase64) {
     console.warn('[Impresora] No hay imagen de logo disponible en Base64 para imprimir.');
     return null;
@@ -1571,6 +1575,9 @@ app.get('/pecar', async (req, res) => {
         <div class="card" style="width: 100%; max-width: 380px; max-height: 80vh; overflow-y: auto; text-align: center; position: relative;">
           <button onclick="cerrarPoemaOffline()" style="position: absolute; top: 1rem; right: 1rem; background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer;">&times;</button>
           <div style="font-size: 0.8rem; color: var(--accent-color); font-weight: bold; margin-bottom: 0.5rem; text-transform: uppercase;">📜 Poema Guardado en Celular</div>
+          <div style="margin: 0.4rem 0 0.8rem 0; text-align: center;">
+            <img src="/logo.jpg" alt="El Pecado Logo" style="width: 75px; height: auto; border-radius: 50%; border: 1px solid var(--border-color); box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);">
+          </div>
           <h3 id="modalPoemTitle" style="font-family: 'Playfair Display', serif; color: #fff; margin-bottom: 0.3rem;">Título del Poema</h3>
           <div id="modalPoemAuthor" style="font-size: 0.85rem; color: var(--text-muted); font-style: italic; margin-bottom: 1rem;">por Autor</div>
           <div id="modalPoemBody" style="font-size: 0.9rem; line-height: 1.6; color: #fbecec; background: rgba(0,0,0,0.4); padding: 1rem; border-radius: 12px; border: 1px dashed var(--border-color); white-space: pre-line; text-align: left; margin-bottom: 1.2rem;"></div>

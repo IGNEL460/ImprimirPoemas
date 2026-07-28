@@ -1,4 +1,4 @@
-const CACHE_NAME = 'el-pecado-v2';
+const CACHE_NAME = 'el-pecado-v3';
 const ASSETS = [
   '/',
   '/pecar',
