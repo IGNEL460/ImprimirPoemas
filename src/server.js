@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { getRandomPoem, parsePoemMetadata, getAllPoems } from './poems.js';
 import { appendAuditRow, getSheetsStatus } from './googleSheetsService.js';
@@ -174,6 +175,77 @@ async function printImageOnTerminal() {
   };
 
   console.log(`[Impresora] Enviando logotipo del Pecado a la terminal: ${terminalId}...`);
+
+  const response = await axios.post(
+    'https://api.mercadopago.com/terminals/v1/actions',
+    payload,
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'X-Idempotency-Key': idempotencyKey
+      }
+    }
+  );
+
+  return response.data;
+}
+
+// Generar imagen Base64 unificada con el logo y el poema sin espacio desperdiciado
+function generateUnifiedReceiptBase64(poemText) {
+  try {
+    const scriptPath = path.join(__dirname, 'receipt_generator.py');
+    const input = JSON.stringify({ poem: poemText });
+    const result = execSync(`python "${scriptPath}"`, {
+      input,
+      encoding: 'utf8',
+      maxBuffer: 10 * 1024 * 1024
+    });
+    const b64 = result.trim();
+    if (b64 && b64.length > 100) {
+      return b64;
+    }
+  } catch (err) {
+    console.error('[Impresora] Error al generar recibo unificado en imagen:', err.message);
+  }
+  return null;
+}
+
+// Enviar recibo unificado (Logotipo + Poema en 1 sola orden continua) a la terminal
+async function printUnifiedReceiptOnTerminal(poemText) {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  const terminalId = process.env.MP_TERMINAL_ID;
+
+  if (!accessToken || accessToken.includes('tu_access_token')) {
+    throw new Error('Mercado Pago Access Token no configurado en el archivo .env');
+  }
+  if (!terminalId || terminalId.includes('tu_terminal_id')) {
+    throw new Error('Mercado Pago Terminal ID no configurado en el archivo .env');
+  }
+
+  const receiptBase64 = generateUnifiedReceiptBase64(poemText);
+  if (!receiptBase64) {
+    console.warn('[Impresora] Fallback: No se pudo generar imagen unificada, enviando en 2 pasos...');
+    if (logoBase64) {
+      try { await printImageOnTerminal(); } catch(e){}
+    }
+    return await printOnTerminal(poemText);
+  }
+
+  const idempotencyKey = crypto.randomUUID();
+  const payload = {
+    type: 'print',
+    external_reference: `poem_receipt_${Date.now()}`,
+    config: {
+      point: {
+        terminal_id: terminalId,
+        subtype: 'image'
+      }
+    },
+    content: receiptBase64
+  };
+
+  console.log(`[Impresora] Enviando orden de impresión unificada (Logotipo + Poema) a la terminal: ${terminalId}...`);
 
   const response = await axios.post(
     'https://api.mercadopago.com/terminals/v1/actions',
@@ -1915,7 +1987,7 @@ app.post('/test-print', async (req, res) => {
   try {
     console.log('[Prueba] Solicitando impresión de prueba manual...');
     const { filename, content } = await getRandomPoem();
-    const result = await printOnTerminal(content);
+    const result = await printUnifiedReceiptOnTerminal(content);
     await incrementPoemPrint(filename);
     return res.status(200).json({ success: true, message: 'Impresión de prueba enviada', result });
   } catch (error) {
@@ -1942,33 +2014,14 @@ app.post('/test-print-logo', async (req, res) => {
 
 async function processBackgroundPrintJob(content, filename) {
   try {
-    // 1. Logotipo
-    try {
-      if (logoBase64) {
-        console.log('[Impresora-Fondo] Encolando logotipo...');
-        await executePrintActionWithRetry(
-          () => printImageOnTerminal(),
-          'Logo'
-        );
-        await new Promise(resolve => setTimeout(resolve, 800));
-      }
-    } catch (imgError) {
-      console.error('[Impresora-Fondo] Falló logotipo:', imgError.message);
-    }
-
-    // 2. Poema
-    try {
-      if (content) {
-        console.log('[Impresora-Fondo] Encolando poema...');
-        await executePrintActionWithRetry(
-          () => printOnTerminal(content),
-          'Poema'
-        );
-        await incrementPoemPrint(filename);
-        console.log('[Impresora-Fondo] Impresión finalizada con éxito.');
-      }
-    } catch (poemError) {
-      console.error('[Impresora-Fondo] Falló poema:', poemError.message);
+    if (content) {
+      console.log('[Impresora-Fondo] Encolando impresión unificada de poema con logotipo...');
+      await executePrintActionWithRetry(
+        () => printUnifiedReceiptOnTerminal(content),
+        'Poema Unificado'
+      );
+      await incrementPoemPrint(filename);
+      console.log('[Impresora-Fondo] Impresión finalizada con éxito.');
     }
   } catch (err) {
     console.error('[Impresora-Fondo] Error crítico:', err.message);
@@ -2380,34 +2433,16 @@ async function processApprovedPayment(paymentId, amount, orderId = null) {
   // Registrar el cobro aprobado en el archivo de historial de fondos
   await recordPayment(paymentIdStr, amount, filename, author, title, vendorName);
 
-  // 1. Intentar imprimir la imagen del logo con reintentos
+  // Imprimir el poema unificado con el logo en una sola pasada
   try {
-    if (logoBase64) {
-      console.log('[Impresora] Encolando impresión de logotipo...');
-      await executePrintActionWithRetry(
-        () => printImageOnTerminal(),
-        'Logo'
-      );
-      // Pausa rápida de 800ms para agilizar la impresión continua
-      await new Promise(resolve => setTimeout(resolve, 800));
-    }
-  } catch (imgError) {
-    console.error('[Impresora] Falló definitivamente la impresión del logotipo:', imgError.message);
-  }
-
-  // 2. Imprimir el poema con reintentos
-  try {
-    console.log('[Impresora] Encolando impresión de poema...');
-    
+    console.log('[Impresora] Encolando impresión unificada de poema con logotipo...');
     await executePrintActionWithRetry(
-      () => printOnTerminal(content),
-      'Poema'
+      () => printUnifiedReceiptOnTerminal(content),
+      'Poema Unificado'
     );
-    
     await incrementPoemPrint(filename);
-    
-    // Registrar en el archivo de control
     markPaymentAsPrinted(paymentIdStr);
+    console.log('[Impresora] Impresión unificada finalizada con éxito.');
   } catch (poemError) {
     console.error('[Impresora] Falló definitivamente la impresión del poema:', poemError.message);
   }
