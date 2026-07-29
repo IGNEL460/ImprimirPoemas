@@ -127,6 +127,18 @@ export async function generateThermalReceiptBase64JS(poemText, customLogoPath = 
       currY += lineHeightFooter;
     }
 
+    // 5. Binarizar a 1-bit monocromo para reducir el tamaño del Base64 de ~120KB a ~12KB
+    const imgData = ctx.getImageData(0, 0, RECEIPT_WIDTH, totalHeight);
+    const data = imgData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      const val = gray > 180 ? 255 : 0;
+      data[i] = val;
+      data[i + 1] = val;
+      data[i + 2] = val;
+    }
+    ctx.putImageData(imgData, 0, 0);
+
     const pngBuffer = canvas.toBuffer('image/png');
     return pngBuffer.toString('base64');
   } catch (err) {
