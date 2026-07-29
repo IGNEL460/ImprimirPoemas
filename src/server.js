@@ -9,6 +9,7 @@ import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { getRandomPoem, parsePoemMetadata, getAllPoems } from './poems.js';
 import { appendAuditRow, getSheetsStatus } from './googleSheetsService.js';
+import { generateThermalReceiptBase64JS } from './receipt_generator_js.js';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -191,8 +192,53 @@ async function printImageOnTerminal() {
   return response.data;
 }
 
-// Generar imagen Base64 unificada con el logo y el poema sin espacio desperdiciado
-function generateUnifiedReceiptBase64(poemText) {
+// Endpoint de comprobación de salud para Keep-Alive
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
+// Temporizador Keep-Alive para evitar el adormecimiento del servidor en la nube (Render) cuando la caja está abierta
+let keepAliveInterval = null;
+
+function startKeepAliveHeartbeat() {
+  if (keepAliveInterval) return;
+  console.log('[Keep-Alive] Caja abierta. Iniciando latido para mantener el servidor activo en la nube...');
+  keepAliveInterval = setInterval(async () => {
+    try {
+      const caja = await getCajaState();
+      if (caja.status !== 'open') {
+        console.log('[Keep-Alive] Caja cerrada. Deteniendo latido.');
+        stopKeepAliveHeartbeat();
+        return;
+      }
+      const selfUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+      await axios.get(`${selfUrl}/health`).catch(() => {});
+      console.log(`[Keep-Alive] Latido de salud enviado a ${selfUrl}/health.`);
+    } catch (err) {
+      console.warn('[Keep-Alive] Error en el latido:', err.message);
+    }
+  }, 5 * 60 * 1000); // Cada 5 minutos
+}
+
+function stopKeepAliveHeartbeat() {
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+    keepAliveInterval = null;
+    console.log('[Keep-Alive] Latido detenido.');
+  }
+}
+
+// Generar imagen Base64 unificada con el logo y el poema (JS Primario, Python Secundario)
+async function generateUnifiedReceiptBase64(poemText) {
+  try {
+    const b64 = await generateThermalReceiptBase64JS(poemText);
+    if (b64 && b64.length > 100) {
+      return b64;
+    }
+  } catch (err) {
+    console.error('[Impresora] Error en generador JS:', err.message);
+  }
+
   try {
     const scriptPath = path.join(__dirname, 'receipt_generator.py');
     const input = JSON.stringify({ poem: poemText });
@@ -206,7 +252,7 @@ function generateUnifiedReceiptBase64(poemText) {
       return b64;
     }
   } catch (err) {
-    console.error('[Impresora] Error al generar recibo unificado en imagen:', err.message);
+    console.error('[Impresora] Error al generar recibo unificado en Python:', err.message);
   }
   return null;
 }
@@ -223,13 +269,20 @@ async function printUnifiedReceiptOnTerminal(poemText) {
     throw new Error('Mercado Pago Terminal ID no configurado en el archivo .env');
   }
 
-  const receiptBase64 = generateUnifiedReceiptBase64(poemText);
+  const receiptBase64 = await generateUnifiedReceiptBase64(poemText);
   if (!receiptBase64) {
     console.warn('[Impresora] Fallback: No se pudo generar imagen unificada, enviando en 2 pasos...');
+    let logoResult = null;
     if (logoBase64) {
-      try { await printImageOnTerminal(); } catch(e){}
+      try { logoResult = await printImageOnTerminal(); } catch(e){ console.warn('[Impresora] Error en fallback de logo:', e.message); }
     }
-    return await printOnTerminal(poemText);
+    try {
+      return await printOnTerminal(poemText);
+    } catch (textErr) {
+      console.error('[Impresora] Error al enviar texto en fallback:', textErr.message);
+      if (logoResult) return logoResult;
+      throw textErr;
+    }
   }
 
   const idempotencyKey = crypto.randomUUID();
@@ -2811,6 +2864,7 @@ app.post('/api/vendedores/abrir-caja', async (req, res) => {
   };
   await saveCajaState(state);
   await logCajaAction('open', vendorName);
+  startKeepAliveHeartbeat();
   return res.json({ success: true, state });
 });
 
@@ -2823,6 +2877,7 @@ app.post('/api/vendedores/cerrar-caja', async (req, res) => {
   };
   await saveCajaState(state);
   await logCajaAction('close', vendorName);
+  stopKeepAliveHeartbeat();
   return res.json({ success: true, state });
 });
 
@@ -3870,6 +3925,14 @@ app.get('/escritores', (req, res) => {
 app.listen(PORT, () => {
   console.log(`====================================================`);
   console.log(`🚀 Servidor ejecutándose en http://localhost:${PORT}`);
-  console.log(`📂 Carpeta de poemas activa en e:/POEMAS/poemas`);
   console.log(`====================================================`);
+  
+  getCajaState().then(caja => {
+    if (caja.status === 'open') {
+      console.log('[Inicio] Estado inicial de caja: ABIERTA. Iniciando Keep-Alive...');
+      startKeepAliveHeartbeat();
+    } else {
+      console.log('[Inicio] Estado inicial de caja: CERRADA.');
+    }
+  }).catch(err => console.error('[Inicio] Error leyendo estado inicial de caja:', err.message));
 });
