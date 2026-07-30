@@ -264,6 +264,8 @@ async function generateUnifiedReceiptBase64(poemText) {
   return null;
 }
 
+
+
 // Enviar recibo unificado (Logotipo + Poema en 1 sola orden continua) a la terminal
 async function printUnifiedReceiptOnTerminal(poemText) {
   const accessToken = process.env.MP_ACCESS_TOKEN;
@@ -277,19 +279,11 @@ async function printUnifiedReceiptOnTerminal(poemText) {
   }
 
   const receiptBase64 = await generateUnifiedReceiptBase64(poemText);
-  if (!receiptBase64) {
-    console.warn('[Impresora] Fallback: No se pudo generar imagen unificada, enviando en 2 pasos...');
-    let logoResult = null;
-    if (logoBase64) {
-      try { logoResult = await printImageOnTerminal(); } catch(e){ console.warn('[Impresora] Error en fallback de logo:', e.message); }
-    }
-    try {
-      return await printOnTerminal(poemText);
-    } catch (textErr) {
-      console.error('[Impresora] Error al enviar texto en fallback:', textErr.message);
-      if (logoResult) return logoResult;
-      throw textErr;
-    }
+  const cleanBase64 = receiptBase64 ? receiptBase64.replace(/^data:image\/\w+;base64,/, '').trim() : null;
+
+  if (!cleanBase64) {
+    console.warn('[Impresora] Fallback: No se pudo generar imagen unificada, enviando en modo texto...');
+    return await printOnTerminal(poemText);
   }
 
   const idempotencyKey = crypto.randomUUID();
@@ -302,24 +296,29 @@ async function printUnifiedReceiptOnTerminal(poemText) {
         subtype: 'image'
       }
     },
-    content: receiptBase64
+    content: cleanBase64
   };
 
   console.log(`[Impresora] Enviando orden de impresión unificada (Logotipo + Poema) a la terminal: ${terminalId}...`);
 
-  const response = await axios.post(
-    'https://api.mercadopago.com/terminals/v1/actions',
-    payload,
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
-        'X-Idempotency-Key': idempotencyKey
+  try {
+    const response = await axios.post(
+      'https://api.mercadopago.com/terminals/v1/actions',
+      payload,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'X-Idempotency-Key': idempotencyKey
+        }
       }
-    }
-  );
-
-  return response.data;
+    );
+    console.log('[Impresora] Respuesta exitosa de Mercado Pago Actions API:', response.data?.id || response.data);
+    return response.data;
+  } catch (err) {
+    console.warn('[Impresora] Advertencia: Error al imprimir imagen unificada en Point Smart. Activando fallback inmediato a modo texto...', err.response?.data || err.message);
+    return await printOnTerminal(poemText);
+  }
 }
 
 // Dashboard Web Premium
