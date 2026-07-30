@@ -63,8 +63,62 @@ function wrapText(text, limit = 30) {
   return lines;
 }
 
+// Generar versión ASCII Art del logotipo para impresión nativa instantánea
+let cachedAsciiLogo = null;
+
+async function getAsciiLogo(width = 22) {
+  if (cachedAsciiLogo !== null) return cachedAsciiLogo;
+  const logoPath = path.join(__dirname, 'logo.jpg');
+  if (!fs.existsSync(logoPath)) {
+    cachedAsciiLogo = '';
+    return '';
+  }
+
+  try {
+    const { createCanvas, loadImage } = await import('@napi-rs/canvas');
+    const img = await loadImage(logoPath);
+    const aspect = img.height / Math.max(1, img.width);
+    const height = Math.max(1, Math.round(width * aspect * 0.5));
+
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, width, height);
+
+    const imgData = ctx.getImageData(0, 0, width, height);
+    const data = imgData.data;
+
+    const chars = '  ..:--==++**##%%@@';
+    let ascii = '';
+
+    for (let y = 0; y < height; y++) {
+      let line = '';
+      for (let x = 0; x < width; x++) {
+        const offset = (y * width + x) * 4;
+        const r = data[offset];
+        const g = data[offset + 1];
+        const b = data[offset + 2];
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        const inv = 255 - gray;
+        const charIdx = Math.floor((inv / 256) * chars.length);
+        line += chars[Math.min(chars.length - 1, charIdx)];
+      }
+      if (line.trim()) {
+        ascii += `{center}${line}{/center}{br}`;
+      }
+    }
+    cachedAsciiLogo = ascii;
+    console.log('[ASCII Logo] Logo en caracteres generado con éxito para impresión instantánea.');
+    return cachedAsciiLogo;
+  } catch (err) {
+    console.warn('[ASCII Logo] No se pudo generar logo ASCII:', err.message);
+    cachedAsciiLogo = '';
+    return '';
+  }
+}
+
 // Formatear poema con las etiquetas nativas de impresión de Mercado Pago (Optimizado para Ahorro de Papel)
-function formatPoemForPoint(poem) {
+async function formatPoemForPoint(poem) {
+  const asciiLogo = await getAsciiLogo(22);
   const originalLines = poem.split('\n');
   const formattedLines = [];
 
@@ -81,8 +135,11 @@ function formatPoemForPoint(poem) {
     }
   }
 
-  // Sin {br} al principio para pegar el texto lo más posible al logotipo
-  let content = `{center}{b}{w}✿ UN POEMA PARA TI ✿{/w}{/b}{/center}{br}`;
+  let content = '';
+  if (asciiLogo) {
+    content += asciiLogo;
+  }
+  content += `{center}{b}{w}✿ UN POEMA PARA TI ✿{/w}{/b}{/center}{br}`;
   content += formattedLines.join('{br}');
   content += `{br}{center}* * * * *{/center}`;
   content += `{center}{s}Gracias por tu colaboración{/s}{/center}`;
@@ -110,7 +167,7 @@ async function printOnTerminal(text) {
     throw new Error('Mercado Pago Terminal ID no configurado en el archivo .env');
   }
 
-  const formattedContent = formatPoemForPoint(text);
+  const formattedContent = await formatPoemForPoint(text);
   const idempotencyKey = crypto.randomUUID();
 
   const payload = {
@@ -2427,7 +2484,10 @@ async function processBackgroundPrintJob(content, filename) {
 app.post('/print-logo-and-poem', async (req, res) => {
   const caja = await getCajaState();
   if (caja.status !== 'open') {
-    return res.status(400).json({ error: 'La caja está cerrada. Abra la caja para poder imprimir.' });
+    console.log('[Efectivo] Caja cerrada detectada al imprimir. Auto-abriendo caja...');
+    await saveCajaState({ status: 'open', updatedBy: 'Auto-Apertura Impresión Efectivo', updatedAt: new Date().toISOString() });
+    await logCajaAction('open', 'Auto-Apertura Impresión Efectivo');
+    startKeepAliveHeartbeat();
   }
 
   const { amount } = req.body;
@@ -2471,7 +2531,10 @@ app.post('/print-logo-and-poem', async (req, res) => {
 app.post('/create-order', async (req, res) => {
   const caja = await getCajaState();
   if (caja.status !== 'open') {
-    return res.status(400).json({ error: 'La caja está cerrada. Abra la caja para poder realizar cobros.' });
+    console.log('[Cobro] Caja cerrada detectada al crear cobro. Auto-abriendo caja...');
+    await saveCajaState({ status: 'open', updatedBy: 'Auto-Apertura Cobro Point', updatedAt: new Date().toISOString() });
+    await logCajaAction('open', 'Auto-Apertura Cobro Point');
+    startKeepAliveHeartbeat();
   }
 
   const { amount, notificationUrl } = req.body;
@@ -3028,8 +3091,10 @@ async function startOrderPolling(orderId, maxAttempts = 100, intervalMs = 3000) 
 app.post('/webhook', async (req, res) => {
   const caja = await getCajaState();
   if (caja.status !== 'open') {
-    console.log(`[Webhook] Notificación omitida porque la caja está cerrada.`);
-    return res.status(200).send('Caja cerrada');
+    console.log('[Webhook] Notificación de cobro recibida con caja cerrada. Auto-abriendo caja...');
+    await saveCajaState({ status: 'open', updatedBy: 'Auto-Apertura Webhook', updatedAt: new Date().toISOString() });
+    await logCajaAction('open', 'Auto-Apertura Webhook');
+    startKeepAliveHeartbeat();
   }
 
   try {
