@@ -88,11 +88,15 @@ export async function appendAuditRow(data) {
   // Opción 1: Enviar mediante Web App URL de Google Apps Script (Método Sencillo)
   if (scriptUrl) {
     try {
-      await axios.post(scriptUrl, { row, spreadsheetId: currentSheetId });
+      const payload = JSON.stringify({ row, spreadsheetId: currentSheetId });
+      await axios.post(scriptUrl, payload, {
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        maxRedirects: 5
+      });
       console.log(`[GoogleSheets] Fila de auditoría enviada por Apps Script URL para pago ${paymentId}.`);
       return true;
     } catch (err) {
-      console.error('[GoogleSheets] Error al enviar vía Google Apps Script:', err.message);
+      console.error('[GoogleSheets] Error al enviar vía Google Apps Script:', err.response?.data || err.message);
     }
   }
 
