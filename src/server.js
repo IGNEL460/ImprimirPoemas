@@ -266,10 +266,11 @@ async function generateUnifiedReceiptBase64(poemText) {
 
 
 
-// Enviar recibo unificado (Logotipo + Poema en 1 sola orden continua) a la terminal
+// Enviar recibo unificado (Logotipo + Poema) a la terminal
 async function printUnifiedReceiptOnTerminal(poemText) {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   const terminalId = process.env.MP_TERMINAL_ID;
+  const printMode = (process.env.PRINT_MODE || 'TEXT').toUpperCase();
 
   if (!accessToken || accessToken.includes('tu_access_token')) {
     throw new Error('Mercado Pago Access Token no configurado en el archivo .env');
@@ -278,11 +279,19 @@ async function printUnifiedReceiptOnTerminal(poemText) {
     throw new Error('Mercado Pago Terminal ID no configurado en el archivo .env');
   }
 
+  // Estrategia Principal: Modo Texto Nativo Instantáneo (Impresión directa <1 segundo sin esperas ni botones)
+  if (printMode === 'TEXT') {
+    console.log(`[Impresora] Modo Texto Nativo Instantáneo activo (<1s). Enviando poema a la terminal ${terminalId}...`);
+    return await printOnTerminal(poemText);
+  }
+
+  // Estrategia Secundaria: Modo Imagen Gráfica (Si se especifica PRINT_MODE=IMAGE)
+  console.log(`[Impresora] Modo Imagen Gráfica activo. Generando recibo térmico...`);
   const receiptBase64 = await generateUnifiedReceiptBase64(poemText);
   const cleanBase64 = receiptBase64 ? receiptBase64.replace(/^data:image\/\w+;base64,/, '').trim() : null;
 
   if (!cleanBase64) {
-    console.warn('[Impresora] Fallback: No se pudo generar imagen unificada, enviando en modo texto...');
+    console.warn('[Impresora] Fallback: No se pudo generar imagen, enviando en modo texto nativo...');
     return await printOnTerminal(poemText);
   }
 
@@ -299,7 +308,7 @@ async function printUnifiedReceiptOnTerminal(poemText) {
     content: cleanBase64
   };
 
-  console.log(`[Impresora] Enviando orden de impresión unificada (Logotipo + Poema) a la terminal: ${terminalId}...`);
+  console.log(`[Impresora] Enviando orden de impresión de imagen a la terminal: ${terminalId}...`);
 
   try {
     const response = await axios.post(
@@ -316,7 +325,7 @@ async function printUnifiedReceiptOnTerminal(poemText) {
     console.log('[Impresora] Respuesta exitosa de Mercado Pago Actions API:', response.data?.id || response.data);
     return response.data;
   } catch (err) {
-    console.warn('[Impresora] Advertencia: Error al imprimir imagen unificada en Point Smart. Activando fallback inmediato a modo texto...', err.response?.data || err.message);
+    console.warn('[Impresora] Error en modo imagen. Conmutando a modo texto nativo instantáneo...', err.response?.data || err.message);
     return await printOnTerminal(poemText);
   }
 }
