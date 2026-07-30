@@ -52,6 +52,51 @@ async function getSheetsClient() {
  */
 export async function appendAuditRow(data) {
   const currentSheetId = process.env.GOOGLE_SHEET_ID || spreadsheetId;
+  const scriptUrl = process.env.GOOGLE_SCRIPT_URL || '';
+
+  const timestamp = new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+  const {
+    paymentId = 'Efectivo',
+    amount = 0,
+    filename = '',
+    author = 'Anónimo',
+    title = 'Sin Título',
+    vendorName = 'Sin Evento',
+    copyrightStatus = 'Anónimo (Libre)',
+    mpFeeValue = 0,
+    taxValue = 0,
+    paperCost = 0,
+    netAmount = 0,
+    reserveAllocated = 0
+  } = data;
+
+  const row = [
+    timestamp,
+    paymentId,
+    vendorName,
+    `$${parseFloat(amount).toFixed(2)}`,
+    title,
+    author,
+    copyrightStatus,
+    `$${parseFloat(mpFeeValue).toFixed(2)}`,
+    `$${parseFloat(taxValue).toFixed(2)}`,
+    `$${parseFloat(paperCost).toFixed(2)}`,
+    `$${parseFloat(netAmount).toFixed(2)}`,
+    `$${parseFloat(reserveAllocated).toFixed(2)}`
+  ];
+
+  // Opción 1: Enviar mediante Web App URL de Google Apps Script (Método Sencillo)
+  if (scriptUrl) {
+    try {
+      await axios.post(scriptUrl, { row, spreadsheetId: currentSheetId });
+      console.log(`[GoogleSheets] Fila de auditoría enviada por Apps Script URL para pago ${paymentId}.`);
+      return true;
+    } catch (err) {
+      console.error('[GoogleSheets] Error al enviar vía Google Apps Script:', err.message);
+    }
+  }
+
+  // Opción 2: Enviar mediante Google Sheets API (Service Account)
   if (!currentSheetId) {
     console.log('[GoogleSheets] Nota: GOOGLE_SHEET_ID no configurado aún en .env. Saltando registro en la nube.');
     return false;
