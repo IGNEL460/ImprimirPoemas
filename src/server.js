@@ -2579,6 +2579,53 @@ app.post('/change-terminal-mode', async (req, res) => {
   }
 });
 
+// Endpoint de simulación para pruebas en Sandbox de Mercado Pago Point
+app.post('/simulate-order-status', async (req, res) => {
+  const { orderId, status = 'processed', paymentMethodType = 'credit_card', paymentMethodId = 'visa', statusDetail = 'accredited' } = req.body;
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+
+  if (!accessToken || accessToken.includes('tu_access_token')) {
+    return res.status(400).json({ error: 'Mercado Pago Access Token no configurado' });
+  }
+
+  if (!orderId) {
+    return res.status(400).json({ error: 'Se requiere el ID de la orden (orderId) para realizar la simulación' });
+  }
+
+  try {
+    console.log(`[Simulación] Enviando evento "${status}" para la orden ${orderId}...`);
+    const payload = { status };
+    if (status === 'processed' || status === 'failed') {
+      payload.payment_method_type = paymentMethodType;
+      payload.payment_method_id = paymentMethodId;
+      payload.installments = 1;
+      payload.status_detail = statusDetail;
+    }
+
+    const response = await axios.post(
+      `https://api.mercadopago.com/v1/orders/${orderId}/events`,
+      payload,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Simulación de estado "${status}" enviada a Mercado Pago`,
+      status: response.status
+    });
+  } catch (error) {
+    const errorDetails = error.response?.data ? JSON.stringify(error.response.data) : error.message;
+    console.error('[Simulación] Error al simular estado:', errorDetails);
+    const errorMessage = error.response?.data?.message || (error.response?.data?.error_messages ? error.response.data.error_messages.join(', ') : null) || error.message;
+    return res.status(500).json({ error: errorMessage });
+  }
+});
+
 // Endpoint para reiniciar las estadísticas de impresión
 app.post('/reset-stats', async (req, res) => {
   try {
