@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let sheetsClient = null;
-let spreadsheetId = process.env.GOOGLE_SHEET_ID || '';
+let spreadsheetId = process.env.GOOGLE_SHEET_ID || '1OYkE2Yr-LGu9NdapmEQMIkRdPVmM9x8Cxn6fFSgQ68Q';
 
 /**
  * Inicializa el cliente de Google Sheets mediante Service Account (desde .env o credentials.json).
