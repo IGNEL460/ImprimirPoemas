@@ -149,10 +149,11 @@ export async function generateThermalReceiptBase64JS(poemText, customLogoPath = 
       data[i + 1] = val;
       data[i + 2] = val;
     }
-    ctx.putImageData(imgData, 0, 0);
-
-    const pngBuffer = canvas.toBuffer('image/png');
-    return pngBuffer.toString('base64');
+    // Exportar como JPEG de alta resolución y bajo peso (~20KB Base64) para evitar desbordamientos de búfer en Point Smart
+    const jpegBuffer = canvas.toBuffer('image/jpeg', 85);
+    const b64Result = jpegBuffer.toString('base64');
+    console.log('[ReceiptJS] Recibo térmico optimizado generado en JPEG Base64 (' + Math.round(b64Result.length / 1024) + ' KB).');
+    return b64Result;
   } catch (err) {
     console.error('[ReceiptJS] Error al generar imagen de recibo:', err);
     return null;

@@ -2845,20 +2845,27 @@ async function recordPayment(paymentId, amount, filename, author, title, vendor 
     console.log(`[Historial] Pago ${paymentId} ($${grossAmount}) registrado correctamente (Vendedor: ${vendor}, Neto: $${netAmount}, Reserva RFC: $${reserveAllocated}).`);
 
     // Sincronizar en segundo plano con Google Sheets API para auditoría perpetua en la nube
-    appendAuditRow({
-      paymentId: paymentId.toString(),
-      amount: grossAmount,
-      filename,
-      author,
-      title,
-      vendorName: vendor || 'Sin Evento',
-      copyrightStatus,
-      mpFeeValue: mpFee,
-      taxValue,
-      paperCost,
-      netAmount,
-      reserveAllocated
-    }).catch(sheetErr => console.error('[GoogleSheets] Error en segundo plano:', sheetErr.message));
+    try {
+      const sheetSaved = await appendAuditRow({
+        paymentId: paymentId.toString(),
+        amount: grossAmount,
+        filename,
+        author,
+        title,
+        vendorName: vendor || 'Sin Evento',
+        copyrightStatus,
+        mpFeeValue: mpFee,
+        taxValue,
+        paperCost,
+        netAmount,
+        reserveAllocated
+      });
+      if (sheetSaved) {
+        console.log(`[GoogleSheets] Registro guardado con éxito en la planilla para el pago ${paymentId}.`);
+      }
+    } catch (sheetErr) {
+      console.error('[GoogleSheets] Error en segundo plano:', sheetErr.message);
+    }
   } catch (err) {
     console.error('[Historial] Error al registrar pago en el historial de transacciones:', err);
   }
