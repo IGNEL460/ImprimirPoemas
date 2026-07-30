@@ -4,9 +4,11 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
-import { execSync } from 'child_process';
+import { execSync, execFile } from 'child_process';
+import { promisify } from 'util';
 import { fileURLToPath } from 'url';
+
+const execFileAsync = promisify(execFile);
 import { getRandomPoem, parsePoemMetadata, getAllPoems } from './poems.js';
 import { appendAuditRow, getSheetsStatus } from './googleSheetsService.js';
 import { generateThermalReceiptBase64JS } from './receipt_generator_js.js';
@@ -194,7 +196,12 @@ async function printImageOnTerminal() {
 
 // Endpoint de comprobación de salud para Keep-Alive
 app.get('/health', (req, res) => {
-  res.status(200).send('OK');
+  res.status(200).json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: Date.now(),
+    env: process.env.NODE_ENV || 'production'
+  });
 });
 
 // Temporizador Keep-Alive para evitar el adormecimiento del servidor en la nube (Render) cuando la caja está abierta
@@ -242,12 +249,12 @@ async function generateUnifiedReceiptBase64(poemText) {
   try {
     const scriptPath = path.join(__dirname, 'receipt_generator.py');
     const input = JSON.stringify({ poem: poemText });
-    const result = execSync(`python "${scriptPath}"`, {
+    const { stdout } = await execFileAsync('python', [scriptPath], {
       input,
       encoding: 'utf8',
       maxBuffer: 10 * 1024 * 1024
     });
-    const b64 = result.trim();
+    const b64 = (stdout || '').trim();
     if (b64 && b64.length > 100) {
       return b64;
     }
@@ -410,9 +417,9 @@ app.get('/', async (req, res) => {
       for (const file of files) {
         const filePath = path.join(poemsDir, file);
         const content = fs.readFileSync(filePath, 'utf8');
-        const { title, author } = parsePoemMetadata(file, content);
+        const { title, author, deathYear } = parsePoemMetadata(file, content);
         const prints = stats[file] || 0;
-        const status = getCopyrightStatus(author);
+        const status = getCopyrightStatus(author, deathYear);
         statsList.push({ file, title, author, prints, status });
       }
     }
@@ -421,7 +428,7 @@ app.get('/', async (req, res) => {
   statsList.sort((a, b) => b.prints - a.prints);
 
   const statsHtml = statsList.map(item => {
-    const statusStyle = item.status.isAlive 
+    const statusStyle = item.status.isEligibleForPayment 
       ? `background: rgba(251, 191, 36, 0.1); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.2);`
       : `background: rgba(52, 211, 153, 0.1); color: var(--success-color); border: 1px solid rgba(52, 211, 153, 0.2);`;
 
@@ -1675,6 +1682,142 @@ app.get('/pecar', async (req, res) => {
           border-color: var(--primary-color);
           box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
         }
+
+        /* Seccion Estado del Servidor Cloud */
+        .server-card {
+          background: rgba(22, 10, 15, 0.65);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border: 1px solid rgba(239, 68, 68, 0.2);
+          border-radius: 20px;
+          padding: 1rem 1.2rem;
+          margin-bottom: 1.2rem;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+          text-align: left;
+          transition: all 0.3s ease;
+        }
+
+        .server-status-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.8rem;
+        }
+
+        .server-status-info {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+
+        .status-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          display: inline-block;
+          flex-shrink: 0;
+          transition: all 0.3s ease;
+        }
+
+        .status-dot.online {
+          background-color: #10b981;
+          box-shadow: 0 0 10px #10b981;
+          animation: pulse-green 2s infinite;
+        }
+
+        .status-dot.waking {
+          background-color: #fbbf24;
+          box-shadow: 0 0 10px #fbbf24;
+          animation: pulse-amber 0.8s infinite;
+        }
+
+        .status-dot.offline {
+          background-color: #ef4444;
+          box-shadow: 0 0 10px #ef4444;
+          animation: pulse-red 2s infinite;
+        }
+
+        .status-dot.checking {
+          background-color: #9ca3af;
+          box-shadow: 0 0 5px #9ca3af;
+        }
+
+        @keyframes pulse-green {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.25); opacity: 0.7; }
+        }
+
+        @keyframes pulse-amber {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.35); opacity: 0.5; }
+        }
+
+        @keyframes pulse-red {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.15); opacity: 0.6; }
+        }
+
+        .server-status-labels {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .server-title {
+          font-size: 0.85rem;
+          font-weight: 700;
+          color: #fff;
+          letter-spacing: 0.3px;
+        }
+
+        .server-subtitle {
+          font-size: 0.78rem;
+          color: var(--text-muted);
+          margin-top: 2px;
+        }
+
+        .btn-wake {
+          background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+          border: none;
+          border-radius: 12px;
+          color: #0b0303;
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.82rem;
+          font-weight: 800;
+          padding: 0.55rem 0.9rem;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 12px rgba(245, 158, 11, 0.25);
+          white-space: nowrap;
+          outline: none;
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn-wake:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 16px rgba(245, 158, 11, 0.4);
+        }
+
+        .btn-wake:active:not(:disabled) {
+          transform: scale(0.95);
+        }
+
+        .btn-wake:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+
+        .server-metrics {
+          margin-top: 0.6rem;
+          padding-top: 0.5rem;
+          border-top: 1px dashed rgba(255, 255, 255, 0.08);
+          font-size: 0.73rem;
+          color: var(--text-muted);
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
       </style>
     </head>
     <body>
@@ -1685,6 +1828,26 @@ app.get('/pecar', async (req, res) => {
         
         <h1>El Pecado</h1>
         <div class="tagline">¿Cuál será tu tentación esta noche?</div>
+
+        <!-- SECCIÓN DE ESTADO DEL SERVIDOR Y BOTÓN DESPERTADOR -->
+        <div class="server-card">
+          <div class="server-status-header">
+            <div class="server-status-info">
+              <span id="serverStatusDot" class="status-dot checking"></span>
+              <div class="server-status-labels">
+                <span class="server-title">Servidor Cloud</span>
+                <span id="serverStatusText" class="server-subtitle">Verificando estado...</span>
+              </div>
+            </div>
+            <button id="btnWakeServer" class="btn-wake" onclick="checkAndWakeServer(true)">
+              ⚡ Despertar
+            </button>
+          </div>
+          <div id="serverMetrics" class="server-metrics" style="display: none;">
+            <span id="serverLatencyText">Latencia: -- ms</span> &bull; 
+            <span id="serverUptimeText">Uptime: --</span>
+          </div>
+        </div>
 
         ${bodyContent}
 
@@ -1920,6 +2083,15 @@ app.get('/pecar', async (req, res) => {
           triggerVibration();
           if (activeAmount < 15) { showToast('El monto mínimo es $15.00'); return; }
 
+          const isServerOffline = document.getElementById('serverStatusDot')?.classList.contains('offline');
+          const isServerWaking = document.getElementById('serverStatusDot')?.classList.contains('waking');
+
+          if (isServerOffline || isServerWaking) {
+            showToast('⚡ Despertando servidor en la nube... Intenta en unos segundos.');
+            checkAndWakeServer(true);
+            return;
+          }
+
           const btn = document.getElementById('btnPecar');
           btn.disabled = true;
           btn.textContent = '🍎 Tentando al Point...';
@@ -1935,10 +2107,11 @@ app.get('/pecar', async (req, res) => {
             if (response.ok) {
               showToast('¡Monto enviado! Pasá la tarjeta en la terminal.');
             } else {
-              showToast('Error: ' + data.error);
+              showToast('Error: ' + (data.error || 'No se pudo enviar cobro'));
             }
           } catch (err) {
-            showToast('Error de conexión con el servidor.');
+            showToast('⚡ Sin conexión inmediata. Despertando servidor...');
+            checkAndWakeServer(true);
           } finally {
             setTimeout(() => {
               btn.disabled = false;
@@ -1952,6 +2125,17 @@ app.get('/pecar', async (req, res) => {
           const btn = document.getElementById('btnImprimirEfectivo');
           btn.disabled = true;
           btn.textContent = '💵 Enviando a ticketera...';
+
+          const isServerOffline = document.getElementById('serverStatusDot')?.classList.contains('offline');
+          const isServerWaking = document.getElementById('serverStatusDot')?.classList.contains('waking');
+
+          if (isServerOffline || isServerWaking) {
+            showToast('⚡ Despertando servidor en la nube... Intenta en unos segundos.');
+            checkAndWakeServer(true);
+            btn.disabled = false;
+            btn.textContent = '💵 Imprimir Poema (Efectivo)';
+            return;
+          }
 
           if (!navigator.onLine) {
             let queue = [];
@@ -1979,11 +2163,8 @@ app.get('/pecar', async (req, res) => {
               showToast('Error: ' + data.error);
             }
           } catch (err) {
-            showToast('Sin señal. Guardando cobro en celular...');
-            let queue = [];
-            try { queue = JSON.parse(localStorage.getItem('pecado_offline_queue') || '[]'); } catch(e){}
-            queue.push({ amount: activeAmount, timestamp: Date.now() });
-            localStorage.setItem('pecado_offline_queue', JSON.stringify(queue));
+            showToast('⚡ El servidor tardó en responder. Despertando...');
+            checkAndWakeServer(true);
           } finally {
             setTimeout(() => {
               btn.disabled = false;
@@ -1992,11 +2173,26 @@ app.get('/pecar', async (req, res) => {
           }
         }
 
+        let isProcessingQueue = false;
         async function processOfflineQueue() {
+          if (isProcessingQueue) return;
           let queue = [];
           try { queue = JSON.parse(localStorage.getItem('pecado_offline_queue') || '[]'); } catch(e){}
           if (queue.length === 0) return;
 
+          // Deduplicar cobros en cola (evitar impresiones idénticas enviadas dentro de 10s)
+          const uniqueQueue = [];
+          for (const item of queue) {
+            const isDup = uniqueQueue.some(q => q.amount === item.amount && Math.abs(q.timestamp - item.timestamp) < 10000);
+            if (!isDup) uniqueQueue.push(item);
+          }
+
+          if (uniqueQueue.length < queue.length) {
+            localStorage.setItem('pecado_offline_queue', JSON.stringify(uniqueQueue));
+            queue = uniqueQueue;
+          }
+
+          isProcessingQueue = true;
           showToast('🔄 Sincronizando ' + queue.length + ' cobro(s) offline...');
           const remaining = [];
           for (const item of queue) {
@@ -2007,14 +2203,16 @@ app.get('/pecar', async (req, res) => {
                 body: JSON.stringify({ amount: item.amount })
               });
               if (!res.ok) remaining.push(item);
+              await new Promise(r => setTimeout(r, 1500)); // Espaciar solicitudes a la terminal
             } catch(e) {
               remaining.push(item);
             }
           }
           localStorage.setItem('pecado_offline_queue', JSON.stringify(remaining));
           if (remaining.length === 0) {
-            showToast('✅ ¡Sincronización offline completada!');
+            showToast('✅ ¡Sincronización de cobros completada!');
           }
+          isProcessingQueue = false;
         }
 
         let toastTimer = null;
@@ -2029,6 +2227,142 @@ app.get('/pecar', async (req, res) => {
             }, 4500);
           }
         }
+        // Funcionalidad de comprobación y despertar del Servidor Cloud (Render)
+        let isWakingUp = false;
+
+        async function checkAndWakeServer(userInitiated = false) {
+          const dot = document.getElementById('serverStatusDot');
+          const txt = document.getElementById('serverStatusText');
+          const btn = document.getElementById('btnWakeServer');
+          const metrics = document.getElementById('serverMetrics');
+          const latencyTxt = document.getElementById('serverLatencyText');
+          const uptimeTxt = document.getElementById('serverUptimeText');
+
+          if (userInitiated) {
+            triggerVibration();
+            showToast('⚡ Conectando con el servidor en la nube...');
+          }
+
+          if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = userInitiated ? '⚡ Contactando...' : '🔄 Verificando...';
+          }
+
+          if (dot) dot.className = 'status-dot waking';
+          if (txt) txt.textContent = userInitiated ? 'Despertando servidor...' : 'Comprobando respuesta...';
+
+          const startTime = Date.now();
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+
+          try {
+            const res = await fetch('/health?t=' + Date.now(), { 
+              signal: controller.signal,
+              headers: { 'Accept': 'application/json' }
+            });
+            clearTimeout(timeoutId);
+
+            const latency = Date.now() - startTime;
+            if (res.ok) {
+              let data = {};
+              try { data = await res.json(); } catch(e){}
+
+              if (dot) dot.className = 'status-dot online';
+              if (txt) txt.textContent = 'Servidor Activo 🟢 (' + latency + 'ms)';
+              
+              if (metrics) metrics.style.display = 'flex';
+              if (latencyTxt) latencyTxt.textContent = 'Latencia: ' + latency + 'ms';
+              if (uptimeTxt && data.uptime) {
+                const totalSec = Math.floor(data.uptime);
+                const mins = Math.floor(totalSec / 60);
+                const hrs = Math.floor(mins / 60);
+                const uptimeFormatted = hrs > 0 ? (hrs + 'h ' + (mins % 60) + 'm') : ((mins % 60) + 'm ' + (totalSec % 60) + 's');
+                uptimeTxt.textContent = 'Uptime: ' + uptimeFormatted;
+              } else if (uptimeTxt) {
+                uptimeTxt.textContent = 'Servidor listo';
+              }
+
+              if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '🟢 Activo';
+                btn.style.background = 'rgba(16, 185, 129, 0.15)';
+                btn.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+                btn.style.color = '#10b981';
+                btn.style.boxShadow = 'none';
+              }
+
+              if (userInitiated) {
+                showToast('✅ ¡Servidor en línea y respondiendo!');
+              }
+              isWakingUp = false;
+              return;
+            }
+          } catch (err) {
+            clearTimeout(timeoutId);
+          }
+
+          // Servidor dormido o sin respuesta rápida
+          if (dot) dot.className = 'status-dot offline';
+          if (txt) txt.textContent = 'Servidor Dormido / Standby 😴';
+          if (metrics) metrics.style.display = 'none';
+
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '⚡ Despertar';
+            btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+            btn.style.border = 'none';
+            btn.style.color = '#0b0303';
+            btn.style.boxShadow = '0 2px 12px rgba(245, 158, 11, 0.25)';
+          }
+
+          if (userInitiated && !isWakingUp) {
+            isWakingUp = true;
+            pollWakeUpServer();
+          }
+        }
+
+        async function pollWakeUpServer() {
+          let attempts = 0;
+          const maxAttempts = 15; // 15 * 3s = 45s max
+          const txt = document.getElementById('serverStatusText');
+          const btn = document.getElementById('btnWakeServer');
+          const dot = document.getElementById('serverStatusDot');
+
+          const wakeInterval = setInterval(async () => {
+            attempts++;
+            const elapsed = attempts * 3;
+            if (dot) dot.className = 'status-dot waking';
+            if (txt) txt.textContent = 'Despertando servidor en Render... (' + elapsed + 's)';
+            if (btn) {
+              btn.disabled = true;
+              btn.innerHTML = '⏳ Esperando (' + elapsed + 's)...';
+            }
+
+            try {
+              const res = await fetch('/health?t=' + Date.now());
+              if (res.ok) {
+                clearInterval(wakeInterval);
+                isWakingUp = false;
+                showToast('⚡ ¡Servidor despertado y en línea!');
+                checkAndWakeServer(false);
+                return;
+              }
+            } catch(e) {}
+
+            if (attempts >= maxAttempts) {
+              clearInterval(wakeInterval);
+              isWakingUp = false;
+              showToast('⚠️ El servidor tardó en despertar. Vuelve a presionar "Despertar".');
+              checkAndWakeServer(false);
+            }
+          }, 3000);
+        }
+
+        // Comprobación inicial y latido periódico
+        checkAndWakeServer(false);
+        setInterval(() => {
+          if (!isWakingUp) checkAndWakeServer(false);
+        }, 35000);
       </script>
     </body>
     </html>
@@ -2283,35 +2617,94 @@ async function incrementPoemPrint(filename) {
   }
 }
 
-const HISTORICAL_AUTHORS = [
-  'jose marti', 'josé martí',
-  'gustavo adolfo becquer', 'gustavo adolfo bécquer',
-  'alfonsina storni',
-  'baldomero fernandez moreno', 'baldomero fernández moreno',
-  'antonio machado',
-  'almafuerte',
-  'federico garcia lorca', 'federico garcía lorca',
-  'delmira agustini',
-  'sor juana ines de la cruz', 'sor juana inés de la cruz',
-  'rosalia de castro', 'rosalía de castro'
-];
+const KNOWN_AUTHORS_DEATH_YEARS = {
+  'jose marti': 1895,
+  'josé martí': 1895,
+  'gustavo adolfo becquer': 1870,
+  'gustavo adolfo bécquer': 1870,
+  'alfonsina storni': 1938,
+  'baldomero fernandez moreno': 1950,
+  'baldomero fernández moreno': 1950,
+  'antonio machado': 1939,
+  'almafuerte': 1917,
+  'federico garcia lorca': 1936,
+  'federico garcía lorca': 1936,
+  'delmira agustini': 1914,
+  'sor juana ines de la cruz': 1695,
+  'sor juana inés de la cruz': 1695,
+  'rosalia de castro': 1885,
+  'rosalía de castro': 1885,
+  'oliverio girondo': 1967,
+  'jorge luis borges': 1986,
+  'julio cortazar': 1984,
+  'julio cortázar': 1984,
+  'pablo neruda': 1973,
+  'mario benedetti': 2009
+};
 
-function getCopyrightStatus(author) {
-  const norm = author.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-  if (norm === 'anonimo' || norm === 'anonima') {
-    return { label: 'Anónimo (Libre)', isAlive: false };
-  }
-  
-  const isHistorical = HISTORICAL_AUTHORS.some(hist => {
-    const normHist = hist.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    return norm.includes(normHist) || normHist.includes(norm);
-  });
+function getCopyrightStatus(author, explicitDeathYear = null, explicitIsAlive = null) {
+  const currentYear = new Date().getFullYear();
+  const norm = (author || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
-  if (isHistorical) {
-    return { label: 'Dominio Público (Exento)', isAlive: false };
-  } else {
-    return { label: 'Autor Vivo / Reservado', isAlive: true };
+  if (!norm || norm === 'anonimo' || norm === 'anonima' || norm === 'desconocido') {
+    return {
+      label: 'Dominio Público (Anónimo)',
+      isAlive: false,
+      isEligibleForPayment: false,
+      yearsSinceDeath: null,
+      reason: 'Obra anónima de dominio público'
+    };
   }
+
+  if (explicitIsAlive === true) {
+    return {
+      label: 'Autor Vivo (Con Derechos)',
+      isAlive: true,
+      isEligibleForPayment: true,
+      yearsSinceDeath: null,
+      reason: 'Autor registrado vivo'
+    };
+  }
+
+  let deathYear = explicitDeathYear;
+  if (!deathYear) {
+    for (const [knownName, year] of Object.entries(KNOWN_AUTHORS_DEATH_YEARS)) {
+      const normKnown = knownName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (norm.includes(normKnown) || normKnown.includes(norm)) {
+        deathYear = year;
+        break;
+      }
+    }
+  }
+
+  if (deathYear) {
+    const yearsSinceDeath = currentYear - deathYear;
+    if (yearsSinceDeath > 70) {
+      return {
+        label: `Dominio Público (+${yearsSinceDeath} años p.m.)`,
+        isAlive: false,
+        isEligibleForPayment: false,
+        yearsSinceDeath,
+        reason: `Ley 11.723 Art. 5: Transcurridos más de 70 años post mortem (Fallecido en ${deathYear})`
+      };
+    } else {
+      return {
+        label: `Derechos Reservados (${yearsSinceDeath} años p.m. - Herederos)`,
+        isAlive: false,
+        isEligibleForPayment: true,
+        yearsSinceDeath,
+        reason: `Ley 11.723 Art. 5: Protegido por herederos durante 70 años post mortem (Fallecido en ${deathYear})`
+      };
+    }
+  }
+
+  return {
+    label: 'Autor Vivo / Reservado',
+    isAlive: true,
+    isEligibleForPayment: true,
+    yearsSinceDeath: null,
+    reason: 'Derechos de autor vigentes'
+  };
 }
 
 // --- Idempotencia de Impresión de Poemas ---
@@ -2959,7 +3352,9 @@ async function calculateEconomicStats(registry) {
   // 3. Fondo de Reserva de Respaldo (acumulado de cada transacción)
   const totalReservesPool = payments.reduce((acc, curr) => acc + (curr.reserveAllocated || 0), 0);
 
-  // 4. Calcular el total RFC distributed
+  // 4. Calcular el total de impresiones de todos los poemas y liquidación de RFC
+  const totalPrintsAllPoems = Object.values(stats).reduce((acc, curr) => acc + (typeof curr === 'number' ? curr : 0), 0);
+
   const poemsDir = path.join(__dirname, '../poemas');
   const authorsList = [];
   for (const penName in registry) {
@@ -2979,7 +3374,10 @@ async function calculateEconomicStats(registry) {
       }
     } catch (e) {}
 
-    const earnedRFC = authorPrints * (authorInfo.pricePerUse || 1);
+    // Evaluar normativa argentina de derechos de autor (Ley 11.723: 70 años post mortem)
+    const copyright = getCopyrightStatus(penName, authorInfo.deathYear, authorInfo.isAlive);
+    const earnedRFC = copyright.isEligibleForPayment ? authorPrints * (authorInfo.pricePerUse || 1) : 0;
+
     authorsList.push({
       penName,
       legalName: authorInfo.legalName,
@@ -2987,7 +3385,9 @@ async function calculateEconomicStats(registry) {
       wallet: authorInfo.wallet,
       prints: authorPrints,
       pricePerUse: authorInfo.pricePerUse || 1,
-      balanceRFC: earnedRFC
+      balanceRFC: earnedRFC,
+      copyrightLabel: copyright.label,
+      isEligibleForPayment: copyright.isEligibleForPayment
     });
   }
 
@@ -3006,6 +3406,7 @@ async function calculateEconomicStats(registry) {
     totalRFCDistributed,
     operatingSurplus,
     rfcShareValue,
+    totalPrintsAllPoems,
     authorsList,
     payments
   };
@@ -3096,7 +3497,7 @@ app.get('/api/admin/dashboard-data', async (req, res) => {
     config,
     stats: {
       totalPoems,
-      totalPrints: econ.authorsList.reduce((acc, curr) => acc + curr.prints, 0),
+      totalPrints: econ.totalPrintsAllPoems || 0,
       totalCollected: econ.totalCollected,
       totalCostsAndTaxes: econ.totalCostsAndTaxes,
       totalReservesPool: econ.totalReservesPool,

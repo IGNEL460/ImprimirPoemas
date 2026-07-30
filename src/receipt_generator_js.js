@@ -6,17 +6,29 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+let cachedLogoImg = null;
+let cachedLogoPath = null;
+
+async function getCachedLogo(logoPath) {
+  if (cachedLogoImg && cachedLogoPath === logoPath) {
+    return cachedLogoImg;
+  }
+  if (fs.existsSync(logoPath)) {
+    try {
+      cachedLogoImg = await loadImage(logoPath);
+      cachedLogoPath = logoPath;
+      return cachedLogoImg;
+    } catch (err) {
+      console.warn('[ReceiptJS] No se pudo cargar la imagen del logo:', err.message);
+    }
+  }
+  return null;
+}
+
 export async function generateThermalReceiptBase64JS(poemText, customLogoPath = null) {
   try {
     const logoPath = customLogoPath || path.join(__dirname, 'logo.jpg');
-    let logoImg = null;
-    if (fs.existsSync(logoPath)) {
-      try {
-        logoImg = await loadImage(logoPath);
-      } catch (err) {
-        console.warn('[ReceiptJS] No se pudo cargar la imagen del logo:', err.message);
-      }
-    }
+    const logoImg = await getCachedLogo(logoPath);
 
     const RECEIPT_WIDTH = 384;
     const targetLogoWidth = 210;

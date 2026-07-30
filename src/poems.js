@@ -61,6 +61,8 @@ export function parsePoemMetadata(filename, content) {
   const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   let title = filename.replace(/\.txt$/i, '');
   let author = 'Anónimo';
+  let deathYear = null;
+  let birthYear = null;
   
   if (lines.length > 0) {
     title = lines[0];
@@ -68,16 +70,29 @@ export function parsePoemMetadata(filename, content) {
   
   if (lines.length > 1) {
     const lastLine = lines[lines.length - 1];
+    let authorLine = '';
     if (lastLine.startsWith('--')) {
-      author = lastLine.replace(/^--\s*/, '');
+      authorLine = lastLine.replace(/^--\s*/, '');
     } else if (lastLine.toLowerCase().startsWith('autor:')) {
-      author = lastLine.replace(/^autor:\s*/i, '');
+      authorLine = lastLine.replace(/^autor:\s*/i, '');
     } else if (lastLine.toLowerCase().startsWith('autor')) {
-      author = lastLine.replace(/^autor\s+/i, '');
+      authorLine = lastLine.replace(/^autor\s+/i, '');
+    }
+    
+    if (authorLine) {
+      // Intentar extraer años ej. (1892-1938) o (m. 1938)
+      const yearMatch = authorLine.match(/\((?:(\d{4})[–\-])?(\d{4})\)/) || authorLine.match(/\(m\.\s*(\d{4})\)/i);
+      if (yearMatch) {
+        if (yearMatch[1]) birthYear = parseInt(yearMatch[1], 10);
+        if (yearMatch[2]) deathYear = parseInt(yearMatch[2], 10);
+        author = authorLine.replace(/\s*\([^)]+\)/, '').trim();
+      } else {
+        author = authorLine.trim();
+      }
     }
   }
   
-  return { title, author };
+  return { title, author, birthYear, deathYear };
 }
 
 /**

@@ -63,8 +63,8 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         }
         
-        // No almacenar en caché endpoints de ordenes, webhooks u otras llamadas dinámicas
-        if (url.pathname.startsWith('/create-order') || url.pathname.startsWith('/test-print') || url.pathname.startsWith('/webhook')) {
+        // No almacenar en caché endpoints de ordenes, webhooks, health u otras llamadas dinámicas
+        if (url.pathname.startsWith('/create-order') || url.pathname.startsWith('/test-print') || url.pathname.startsWith('/webhook') || url.pathname.startsWith('/health')) {
           return networkResponse;
         }
 
