@@ -28,7 +28,8 @@ async function getCachedLogo(logoPath) {
 export async function generateThermalReceiptBase64JS(poemText, customLogoPath = null) {
   try {
     const logoPath = customLogoPath || path.join(__dirname, 'logo.jpg');
-    const logoImg = await getCachedLogo(logoPath);
+    // const logoImg = await getCachedLogo(logoPath);
+    const logoImg = null; // Logo desactivado por el momento
 
     const RECEIPT_WIDTH = 384;
     const targetLogoWidth = 210;
@@ -67,7 +68,7 @@ export async function generateThermalReceiptBase64JS(poemText, customLogoPath = 
       }
     }
 
-    const headerTitle = '✿ UN POEMA PARA TI ✿';
+    const headerTitle = '🍎 UN POEMA PARA TI 🍎';
     const footerLines = [
       '* * * * *',
       'Gracias por tu colaboración',

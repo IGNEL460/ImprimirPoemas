@@ -136,10 +136,13 @@ async function formatPoemForPoint(poem) {
   }
 
   let content = '';
+  // Logo desactivado temporalmente
+  /*
   if (asciiLogo) {
     content += asciiLogo;
   }
-  content += `{center}{b}{w}✿ UN POEMA PARA TI ✿{/w}{/b}{/center}{br}`;
+  */
+  content += `{center}{b}{w}🍎 UN POEMA PARA TI 🍎{/w}{/b}{/center}{br}`;
   content += formattedLines.join('{br}');
   content += `{br}{center}* * * * *{/center}`;
   content += `{center}{s}Gracias por tu colaboración{/s}{/center}`;
@@ -837,7 +840,7 @@ app.get('/', async (req, res) => {
     <body>
       <div class="container">
         <header>
-          <h1>✿ Poemas al Viento ✿</h1>
+          <h1>🍎 Poemas al Viento 🍎</h1>
           <p class="subtitle">AUDITORÍA Y CONTROL FINANCIERO DEL FONDO</p>
         </header>
 
@@ -4037,7 +4040,7 @@ app.get('/escritores', (req, res) => {
     </head>
     <body>
       <header>
-        <h1>✿ Poemas al Viento ✿</h1>
+        <h1>🍎 Poemas al Viento 🍎</h1>
         <p>PORTAL DE ESCRITORES &bull; ELPECADO.AR</p>
 
         ${authorName ? `

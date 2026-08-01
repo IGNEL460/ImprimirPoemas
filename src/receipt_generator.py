@@ -33,10 +33,10 @@ def generate_thermal_receipt_base64(poem_text, logo_path=None):
         logo = Image.new('RGB', (180, 180), (255, 255, 255))
 
     RECEIPT_WIDTH = 384
-    target_logo_width = 210
-    aspect = logo.height / max(1, logo.width)
-    target_logo_height = int(target_logo_width * aspect)
-    logo_resized = logo.resize((target_logo_width, target_logo_height), Image.Resampling.LANCZOS)
+    # Logo desactivado por el momento
+    target_logo_width = 0
+    target_logo_height = 0
+    logo_resized = None
 
     # 2. Select System Fonts
     font_paths = [
@@ -89,7 +89,7 @@ def generate_thermal_receipt_base64(poem_text, logo_path=None):
         else:
             wrapped_lines.extend(wrap_line(t, 32))
 
-    header_title = '✿ UN POEMA PARA TI ✿'
+    header_title = '🍎 UN POEMA PARA TI 🍎'
     footer_lines = [
         '* * * * *',
         'Gracias por tu colaboración',
@@ -118,11 +118,12 @@ def generate_thermal_receipt_base64(poem_text, logo_path=None):
     receipt = Image.new('RGB', (RECEIPT_WIDTH, total_height), (255, 255, 255))
     draw = ImageDraw.Draw(receipt)
 
-    # 4. Draw Logo Centered
-    logo_x = (RECEIPT_WIDTH - target_logo_width) // 2
+    # 4. Draw Logo Centered (Si está activo)
     curr_y = padding_top
-    receipt.paste(logo_resized, (logo_x, curr_y))
-    curr_y += target_logo_height + padding_between_logo_title
+    if logo_resized:
+        logo_x = (RECEIPT_WIDTH - target_logo_width) // 2
+        receipt.paste(logo_resized, (logo_x, curr_y))
+        curr_y += target_logo_height + padding_between_logo_title
 
     # 5. Draw Header Title
     bbox = draw.textbbox((0,0), header_title, font=font_title)
@@ -169,7 +170,7 @@ if __name__ == '__main__':
             parsed = json.loads(input_data)
             poem_text = parsed.get('poem', '')
         else:
-            poem_text = '✿ Un Poema ✿'
+            poem_text = '🍎 Un Poema 🍎'
         
         b64 = generate_thermal_receipt_base64(poem_text)
         sys.stdout.write(b64)
