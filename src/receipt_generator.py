@@ -94,6 +94,8 @@ def generate_thermal_receipt_base64(poem_text, logo_path=None):
         '* * * * *',
         'Gracias por tu colaboración',
         'y por apoyar el arte.',
+        '--------------------------------',
+        'Encuentra más información en:',
         'elpecado.ar'
     ]
 
@@ -107,7 +109,7 @@ def generate_thermal_receipt_base64(poem_text, logo_path=None):
     line_height_footer = 20
 
     h_poem = sum(line_height_body if l != '' else 10 for l in wrapped_lines)
-    h_footer = len(footer_lines) * line_height_footer
+    h_footer = sum(24 if l == 'elpecado.ar' else line_height_footer for l in footer_lines)
 
     total_height = (padding_top + target_logo_height + 
                     padding_between_logo_title + 26 + 
@@ -145,11 +147,19 @@ def generate_thermal_receipt_base64(poem_text, logo_path=None):
 
     # 7. Draw Footer Lines
     for i, line in enumerate(footer_lines):
-        f = font_bold if i == len(footer_lines)-1 else font_footer
+        if line == 'elpecado.ar':
+            f = font_bold
+            lh = 24
+        elif line == 'Encuentra más información en:':
+            f = font_footer
+            lh = line_height_footer
+        else:
+            f = font_footer
+            lh = line_height_footer
         bbox = draw.textbbox((0,0), line, font=f)
         tw = bbox[2] - bbox[0]
         draw.text(((RECEIPT_WIDTH - tw)//2, curr_y), line, fill=(0,0,0), font=f)
-        curr_y += line_height_footer
+        curr_y += lh
 
     # 8. Convert to 1-bit monochrome thermal image
     monochrome = receipt.convert('1', dither=Image.FLOYDSTEINBERG).convert('RGB')

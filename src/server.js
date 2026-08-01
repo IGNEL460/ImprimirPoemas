@@ -147,7 +147,9 @@ async function formatPoemForPoint(poem) {
   content += `{br}{center}* * * * *{/center}`;
   content += `{center}{s}Gracias por tu colaboración{/s}{/center}`;
   content += `{center}{s}y por apoyar el arte.{/s}{/center}`;
-  content += `{center}{b}elpecado.ar{/b}{/center}`;
+  content += `{center}--------------------------------{/center}`;
+  content += `{center}{s}Encuentra más información en:{/s}{/center}`;
+  content += `{center}{b}{w}elpecado.ar{/w}{/b}{/center}`;
 
   // La API requiere al menos 100 caracteres.
   // Rellenar con espacios en blanco en lugar de saltos de línea para NO desperdiciar papel.
@@ -1680,6 +1682,34 @@ app.get('/pecar', async (req, res) => {
           font-size: 0.75rem;
           color: var(--text-muted);
           letter-spacing: 1px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 0.6rem;
+        }
+
+        .website-highlight-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.55rem 1.2rem;
+          border-radius: 20px;
+          background: rgba(239, 68, 68, 0.15);
+          border: 1px solid rgba(239, 68, 68, 0.4);
+          color: #fca5a5;
+          text-decoration: none;
+          font-size: 0.85rem;
+          font-weight: 500;
+          transition: all 0.2s ease;
+          box-shadow: 0 0 12px rgba(239, 68, 68, 0.15);
+        }
+
+        .website-highlight-badge:hover {
+          background: rgba(239, 68, 68, 0.28);
+          border-color: rgba(239, 68, 68, 0.7);
+          color: #ffffff;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 15px rgba(239, 68, 68, 0.35);
         }
 
         .toast {
@@ -1920,7 +1950,10 @@ app.get('/pecar', async (req, res) => {
         ${bodyContent}
 
         <div class="footer">
-          EL PECADO TEATRO &bull; ELPECADO.AR
+          <div>EL PECADO TEATRO</div>
+          <a href="https://elpecado.ar" target="_blank" rel="noopener noreferrer" class="website-highlight-badge">
+            🌐 <span>Más información en:</span> <strong style="text-decoration: underline;">elpecado.ar</strong>
+          </a>
         </div>
       </div>
 
@@ -1937,6 +1970,10 @@ app.get('/pecar', async (req, res) => {
           <h3 id="modalPoemTitle" style="font-family: 'Playfair Display', serif; color: #fff; margin-bottom: 0.3rem;">Título del Poema</h3>
           <div id="modalPoemAuthor" style="font-size: 0.85rem; color: var(--text-muted); font-style: italic; margin-bottom: 1rem;">por Autor</div>
           <div id="modalPoemBody" style="font-size: 0.9rem; line-height: 1.6; color: #fbecec; background: rgba(0,0,0,0.4); padding: 1rem; border-radius: 12px; border: 1px dashed var(--border-color); white-space: pre-line; text-align: left; margin-bottom: 1.2rem;"></div>
+          
+          <div style="margin-bottom: 1rem; padding: 0.6rem; border-radius: 12px; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); font-size: 0.82rem; color: #fca5a5; text-align: center;">
+            🌐 Más información y obras en <a href="https://elpecado.ar" target="_blank" rel="noopener noreferrer" style="color: #fff; font-weight: bold; text-decoration: underline;">elpecado.ar</a>
+          </div>
           
           <button class="preset-btn" style="width: 100%; background: var(--primary-color); color: white;" onclick="verPoemaOffline()">🎲 Probar Otro Poema</button>
           <button class="preset-btn" style="width: 100%; margin-top: 0.5rem;" onclick="cerrarPoemaOffline()">Cerrar Visor</button>
@@ -4041,7 +4078,7 @@ app.get('/escritores', (req, res) => {
     <body>
       <header>
         <h1>🍎 Poemas al Viento 🍎</h1>
-        <p>PORTAL DE ESCRITORES &bull; ELPECADO.AR</p>
+        <p>PORTAL DE ESCRITORES &bull; <a href="https://elpecado.ar" target="_blank" rel="noopener noreferrer" style="color: var(--accent-color); font-weight: bold; text-decoration: underline;">elpecado.ar</a></p>
 
         ${authorName ? `
           <div class="user-bar">
