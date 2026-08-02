@@ -1,0 +1,57 @@
+{
+  "generalInfo": {
+    "groupName": "El Pecado (Grupo de Teatro)",
+    "description": "Espacio de coordinación general, producción escénica y medios de difusión y promoción (Podcast, Blog y Columna Teatral).",
+    "updatedAt": "2026-08-02T18:49:21-03:00"
+  },
+  "items": [
+    {
+      "id": "prod_1",
+      "category": "teatro",
+      "categoryName": "🎭 Producción Teatral & Grupo",
+      "title": "Planificación de Ensayos y Montaje de Obra",
+      "description": "Definir calendario de ensayos generales, diseño de escenografía, vestuario y fechas en sala para la temporada.",
+      "responsible": "Dirección & Elenco",
+      "status": "en_produccion",
+      "date": "2026-08-15",
+      "notes": "Coordinar con la sala teatral la fecha de estreno y prueba de luces.",
+      "createdAt": "2026-08-02T18:49:21-03:00"
+    },
+    {
+      "id": "prod_2",
+      "category": "podcast",
+      "categoryName": "🎙️ Podcast El Pecado",
+      "title": "Episodio 1: Bambalinas, Poesía y Pasión Teatral",
+      "description": "Grabación y edición del primer episodio del podcast oficial del grupo. Charlas sobre actuación y la trastienda teatral.",
+      "responsible": "Equipo de Audio & Producción",
+      "status": "en_planificacion",
+      "date": "2026-08-20",
+      "notes": "Preparar la escaleta del programa, micrófonos y separadores musicales.",
+      "createdAt": "2026-08-02T18:49:21-03:00"
+    },
+    {
+      "id": "prod_3",
+      "category": "blog",
+      "categoryName": "✍️ Blog Cultural",
+      "title": "Nota de Lanzamiento: Arte Independiente y Poemas Térmicos",
+      "description": "Publicación en el blog oficial sobre cómo El Pecado integra la impresión de versos en ticketera con obras en vivo.",
+      "responsible": "Redacción & Comunicación",
+      "status": "idea",
+      "date": "2026-08-25",
+      "notes": "Adjuntar galería de fotos de las funciones y relatos del público.",
+      "createdAt": "2026-08-02T18:49:21-03:00"
+    },
+    {
+      "id": "prod_4",
+      "category": "columna",
+      "categoryName": "📰 Columna Teatral",
+      "title": "Columna: La Vigencia del Teatro Independiente",
+      "description": "Artículo de opinión y crítica teatral para medios locales y difusión en el sitio elpecado.ar.",
+      "responsible": "Columnista Invitado & Prensa",
+      "status": "publicado",
+      "date": "2026-08-01",
+      "notes": "Publicado con excelente recepción en el portal web.",
+      "createdAt": "2026-08-02T18:49:21-03:00"
+    }
+  ]
+}

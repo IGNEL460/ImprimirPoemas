@@ -849,6 +849,7 @@ app.get('/', async (req, res) => {
         <!-- Navegación por pestañas -->
         <div class="nav-tabs">
           <button class="tab-btn active" onclick="switchTab('tab-terminales')">🔌 Terminales Point</button>
+          <button class="tab-btn" onclick="switchTab('tab-consejo')">🎭 El Consejo - Producción EL PECADO</button>
           <button class="tab-btn" onclick="switchTab('tab-config')">⚙️ Configuración Financiera</button>
           <button class="tab-btn" onclick="switchTab('tab-rendimiento')">📊 Rendimiento y Reservas</button>
           <button class="tab-btn" onclick="switchTab('tab-escritores')">👥 Escritores y Saldos</button>
@@ -1121,6 +1122,130 @@ app.get('/', async (req, res) => {
               </div>
             </div>
           </div>
+        <!-- PESTAÑA: CONSEJO DE PRODUCCIÓN EL PECADO -->
+        <div id="tab-consejo" class="tab-content">
+          <div class="card" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(20, 28, 48, 0.7) 100%); border-color: rgba(239, 68, 68, 0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
+              <div>
+                <h2 style="color: #fff; font-family: 'Playfair Display', serif; font-size: 1.8rem; margin-bottom: 0.3rem;">
+                  🎭 EL PECADO - CONSEJO DE PRODUCCIÓN DEL GRUPO
+                </h2>
+                <p style="color: var(--text-muted); font-size: 0.95rem;">
+                  Gestión integral de proyectos teatrales, producción general y medios de difusión (Podcast, Blog y Columna Teatral).
+                </p>
+              </div>
+              <button onclick="loadConsejoData()" class="btn btn-secondary" style="width: auto; padding: 0.6rem 1.2rem; font-size: 0.85rem; margin: 0; display: inline-flex; align-items: center; gap: 0.4rem;">
+                🔄 Actualizar Consejo
+              </button>
+            </div>
+
+            <!-- MÉTRICAS DE PRODUCCIÓN DEL GRUPO -->
+            <div class="stats-grid" style="margin-top: 1.5rem;">
+              <div class="stat-card" style="border-color: rgba(239, 68, 68, 0.3);">
+                <div class="stat-label">Temas en Consejo</div>
+                <div class="stat-value" id="cntConsejoTotal" style="color: #fff;">0</div>
+              </div>
+              <div class="stat-card" style="border-color: rgba(192, 132, 252, 0.3);">
+                <div class="stat-label">🎭 Teatro & Montajes</div>
+                <div class="stat-value" id="cntConsejoTeatro" style="color: var(--primary-color);">0</div>
+              </div>
+              <div class="stat-card" style="border-color: rgba(59, 130, 246, 0.3);">
+                <div class="stat-label">🎙️ Podcast El Pecado</div>
+                <div class="stat-value" id="cntConsejoPodcast" style="color: #60a5fa;">0</div>
+              </div>
+              <div class="stat-card" style="border-color: rgba(52, 211, 153, 0.3);">
+                <div class="stat-label">✍️ Blog Cultural</div>
+                <div class="stat-value" id="cntConsejoBlog" style="color: var(--success-color);">0</div>
+              </div>
+              <div class="stat-card" style="border-color: rgba(251, 191, 36, 0.3);">
+                <div class="stat-label">📰 Columna Teatral</div>
+                <div class="stat-value" id="cntConsejoColumna" style="color: var(--accent-color);">0</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- FORMULARIO DE NUEVO TEMA O PROYECTO -->
+          <div class="card">
+            <h3 style="font-family: 'Playfair Display', serif; color: #fff; font-size: 1.4rem; margin-bottom: 1.2rem; display: flex; align-items: center; gap: 0.5rem;">
+              ➕ Añadir Tema o Proyecto de Producción al Consejo
+            </h3>
+
+            <form id="formConsejoItem" onsubmit="handleCreateConsejoItem(event)">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.2rem; margin-bottom: 1.2rem;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="cnsCategory">Área / Categoría</label>
+                  <select id="cnsCategory" class="form-control" required style="background: rgba(0, 0, 0, 0.6); color: #fff;">
+                    <option value="teatro">🎭 Producción Teatral & Grupo (Obras/Ensayos)</option>
+                    <option value="podcast">🎙️ Podcast "El Pecado"</option>
+                    <option value="blog">✍️ Blog Cultural & Publicaciones</option>
+                    <option value="columna">📰 Columna Teatral & Crítica</option>
+                  </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="cnsTitle">Título del Proyecto o Tema</label>
+                  <input type="text" id="cnsTitle" class="form-control" placeholder="Ej: Temporada de Primavera / Episodio Podcast" required>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="cnsResponsible">Responsable(s) / Equipo</label>
+                  <input type="text" id="cnsResponsible" class="form-control" placeholder="Ej: Dirección, Redacción, Elenco">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="cnsStatus">Estado Inicial</label>
+                  <select id="cnsStatus" class="form-control" style="background: rgba(0, 0, 0, 0.6); color: #fff;">
+                    <option value="idea">💡 Idea Propuesta</option>
+                    <option value="en_planificacion">📌 En Planificación</option>
+                    <option value="en_produccion" selected>🎬 En Producción / En Marcha</option>
+                    <option value="publicado">🚀 Publicado / Completado</option>
+                  </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="cnsDate">Fecha Objetivo / Publicación</label>
+                  <input type="date" id="cnsDate" class="form-control">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="cnsDescription">Descripción General del Tema</label>
+                <textarea id="cnsDescription" class="form-control" rows="3" placeholder="Detalla los puntos a tratar, temática del podcast, contenido del post de blog o columna..." required></textarea>
+              </div>
+
+              <div class="form-group">
+                <label for="cnsNotes">Notas Adicionales de Promoción o Producción (Opcional)</label>
+                <input type="text" id="cnsNotes" class="form-control" placeholder="Ej: Enlace a difusión, lista de invitados, vestuario requerido, etiquetas social media">
+              </div>
+
+              <button type="submit" id="btnConsejoSubmit" class="btn" style="width: auto; padding: 0.8rem 2rem; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); margin-top: 0;">
+                🚀 Guardar e Integrar en el Consejo
+              </button>
+            </form>
+          </div>
+
+          <!-- FILTROS Y TARJETAS DE PROYECTOS -->
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+              <h3 style="font-family: 'Playfair Display', serif; color: #fff; font-size: 1.4rem;">
+                📋 Tablero del Consejo: Proyectos y Promoción
+              </h3>
+
+              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button class="btn btn-secondary cns-filter-btn active" onclick="filterConsejoCategory('all', this)" style="padding: 0.4rem 0.8rem; font-size: 0.82rem; margin: 0;">Todas</button>
+                <button class="btn btn-secondary cns-filter-btn" onclick="filterConsejoCategory('teatro', this)" style="padding: 0.4rem 0.8rem; font-size: 0.82rem; margin: 0;">🎭 Teatro</button>
+                <button class="btn btn-secondary cns-filter-btn" onclick="filterConsejoCategory('podcast', this)" style="padding: 0.4rem 0.8rem; font-size: 0.82rem; margin: 0;">🎙️ Podcast</button>
+                <button class="btn btn-secondary cns-filter-btn" onclick="filterConsejoCategory('blog', this)" style="padding: 0.4rem 0.8rem; font-size: 0.82rem; margin: 0;">✍️ Blog</button>
+                <button class="btn btn-secondary cns-filter-btn" onclick="filterConsejoCategory('columna', this)" style="padding: 0.4rem 0.8rem; font-size: 0.82rem; margin: 0;">📰 Columna</button>
+              </div>
+            </div>
+
+            <div id="consejoItemsContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.2rem;">
+              <div style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: var(--text-muted);">
+                Cargando proyectos del Consejo de Producción...
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1149,6 +1274,10 @@ app.get('/', async (req, res) => {
               btn.classList.add('active');
             }
           });
+
+          if (tabId === 'tab-consejo') {
+            loadConsejoData();
+          }
         }
 
         // Guardar configuración
@@ -1270,22 +1399,215 @@ app.get('/', async (req, res) => {
           });
         }
 
-        async function changeCajaState(action) {
-          const url = action === 'open' ? '/api/vendedores/abrir-caja' : '/api/vendedores/cerrar-caja';
-          if (action === 'close' && !confirm('¿Estás seguro de que deseas cerrar la caja del evento? Se bloquearán todos los cobros y consultas.')) {
+        // JS interactivo del Consejo de Producción (El Pecado Grupo de Teatro)
+        let currentConsejoItems = [];
+        let currentConsejoFilter = 'all';
+
+        async function loadConsejoData() {
+          try {
+            const res = await fetch('/api/consejo/produccion');
+            if (!res.ok) return;
+            const result = await res.json();
+            if (!result.success || !result.data) return;
+
+            currentConsejoItems = result.data.items || [];
+            renderConsejoUI();
+          } catch (err) {
+            console.error('Error cargando Consejo:', err);
+          }
+        }
+
+        function renderConsejoUI() {
+          const total = currentConsejoItems.length;
+          const teatro = currentConsejoItems.filter(i => i.category === 'teatro').length;
+          const podcast = currentConsejoItems.filter(i => i.category === 'podcast').length;
+          const blog = currentConsejoItems.filter(i => i.category === 'blog').length;
+          const columna = currentConsejoItems.filter(i => i.category === 'columna').length;
+
+          const elTotal = document.getElementById('cntConsejoTotal');
+          const elTeatro = document.getElementById('cntConsejoTeatro');
+          const elPodcast = document.getElementById('cntConsejoPodcast');
+          const elBlog = document.getElementById('cntConsejoBlog');
+          const elColumna = document.getElementById('cntConsejoColumna');
+
+          if (elTotal) elTotal.textContent = total;
+          if (elTeatro) elTeatro.textContent = teatro;
+          if (elPodcast) elPodcast.textContent = podcast;
+          if (elBlog) elBlog.textContent = blog;
+          if (elColumna) elColumna.textContent = columna;
+
+          let filtered = currentConsejoItems;
+          if (currentConsejoFilter !== 'all') {
+            filtered = currentConsejoItems.filter(i => i.category === currentConsejoFilter);
+          }
+
+          const container = document.getElementById('consejoItemsContainer');
+          if (!container) return;
+
+          if (filtered.length === 0) {
+            container.innerHTML = `
+              <div style="grid-column: 1 / -1; text-align: center; padding: 2.5rem; background: rgba(0,0,0,0.3); border-radius: 16px; border: 1px dashed var(--border-color); color: var(--text-muted);">
+                🎭 No hay proyectos o temas registrados en esta categoría aún. ¡Agrega uno arriba!
+              </div>
+            `;
             return;
           }
-          try {
-            const res = await fetch(url, { method: 'POST' });
-            if (res.ok) {
-              showToast('Caja ' + (action === 'open' ? 'abierta' : 'cerrada') + ' con éxito.');
-              setTimeout(() => window.location.reload(), 1000);
-            } else {
-              showToast('Error al cambiar el estado de la caja.');
-            }
-          } catch(e) {
-            showToast('Error de conexión.');
+
+          const statusMap = {
+            'idea': { label: '💡 Idea Propuesta', style: 'background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3);' },
+            'en_planificacion': { label: '📌 En Planificación', style: 'background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);' },
+            'en_produccion': { label: '🎬 En Producción', style: 'background: rgba(192, 132, 252, 0.15); color: #c084fc; border: 1px solid rgba(192, 132, 252, 0.3);' },
+            'publicado': { label: '🚀 Publicado / Listo', style: 'background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3);' }
+          };
+
+          const categoryBadges = {
+            'teatro': '🎭 TEATRO & GRUPO',
+            'podcast': '🎙️ PODCAST',
+            'blog': '✍️ BLOG',
+            'columna': '📰 COLUMNA TEATRAL'
+          };
+
+          container.innerHTML = filtered.map(item => {
+            const st = statusMap[item.status] || statusMap['idea'];
+            const catLabel = categoryBadges[item.category] || item.categoryName || 'PRODUCCIÓN';
+            const dateFormatted = item.date ? new Date(item.date + 'T00:00:00').toLocaleDateString('es-AR') : 'Sin fecha';
+
+            return `
+              <div class="card" style="margin-bottom: 0; background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; justify-content: space-between; transition: transform 0.2s, box-shadow 0.2s;" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform='none'">
+                <div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.8rem; flex-wrap: wrap;">
+                    <span style="font-size: 0.72rem; font-weight: 800; letter-spacing: 1px; padding: 0.25rem 0.6rem; border-radius: 8px; background: rgba(255,255,255,0.06); color: var(--accent-color); border: 1px solid rgba(255,255,255,0.1);">
+                      ${catLabel}
+                    </span>
+                    <span style="font-size: 0.78rem; font-weight: 600; padding: 0.25rem 0.6rem; border-radius: 12px; ${st.style}">
+                      ${st.label}
+                    </span>
+                  </div>
+
+                  <h4 style="color: #fff; font-size: 1.15rem; font-family: 'Playfair Display', serif; margin-bottom: 0.5rem; line-height: 1.3;">
+                    ${item.title}
+                  </h4>
+
+                  <p style="color: var(--text-muted); font-size: 0.88rem; line-height: 1.5; margin-bottom: 1rem; white-space: pre-line;">
+                    ${item.description}
+                  </p>
+
+                  ${item.notes ? `
+                    <div style="background: rgba(255,255,255,0.03); border-left: 3px solid var(--accent-color); padding: 0.5rem 0.8rem; border-radius: 0 8px 8px 0; font-size: 0.82rem; color: #fbecec; margin-bottom: 1rem;">
+                      💡 <strong>Notas:</strong> ${item.notes}
+                    </div>
+                  ` : ''}
+                </div>
+
+                <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.8rem; margin-top: 0.5rem;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.8rem;">
+                    <span>👤 ${item.responsible || 'Grupo El Pecado'}</span>
+                    <span>📅 ${dateFormatted}</span>
+                  </div>
+
+                  <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                    <select onchange="updateConsejoStatus('${item.id}', this.value)" style="flex: 1; padding: 0.4rem 0.6rem; font-size: 0.8rem; border-radius: 8px; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid rgba(255,255,255,0.15); outline: none; cursor: pointer;">
+                      <option value="idea" ${item.status === 'idea' ? 'selected' : ''}>💡 Idea Propuesta</option>
+                      <option value="en_planificacion" ${item.status === 'en_planificacion' ? 'selected' : ''}>📌 En Planificación</option>
+                      <option value="en_produccion" ${item.status === 'en_produccion' ? 'selected' : ''}>🎬 En Producción</option>
+                      <option value="publicado" ${item.status === 'publicado' ? 'selected' : ''}>🚀 Publicado / Listo</option>
+                    </select>
+
+                    <button onclick="deleteConsejoItem('${item.id}')" class="btn btn-secondary" style="width: auto; padding: 0.4rem 0.7rem; font-size: 0.8rem; margin: 0; border-color: rgba(239, 68, 68, 0.3); color: #f87171;" title="Eliminar del Consejo">
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+
+        function filterConsejoCategory(cat, btn) {
+          currentConsejoFilter = cat;
+          document.querySelectorAll('.cns-filter-btn').forEach(b => b.classList.remove('active'));
+          if (btn) btn.classList.add('active');
+          renderConsejoUI();
+        }
+
+        async function handleCreateConsejoItem(event) {
+          event.preventDefault();
+          const category = document.getElementById('cnsCategory').value;
+          const title = document.getElementById('cnsTitle').value.trim();
+          const responsible = document.getElementById('cnsResponsible').value.trim();
+          const status = document.getElementById('cnsStatus').value;
+          const date = document.getElementById('cnsDate').value;
+          const description = document.getElementById('cnsDescription').value.trim();
+          const notes = document.getElementById('cnsNotes').value.trim();
+
+          if (!title || !description) {
+            if (typeof showNotif === 'function') showNotif('error', 'Completa título y descripción');
+            else if (typeof showToast === 'function') showToast('Completa título y descripción');
+            return;
           }
+
+          const btn = document.getElementById('btnConsejoSubmit');
+          if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+
+          try {
+            const res = await fetch('/api/consejo/produccion/item', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ category, title, responsible, status, date, description, notes })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+
+            if (typeof showNotif === 'function') showNotif('success', '¡Propuesta añadida al Consejo!');
+            else if (typeof showToast === 'function') showToast('¡Propuesta añadida al Consejo!');
+
+            document.getElementById('formConsejoItem').reset();
+            await loadConsejoData();
+          } catch (err) {
+            if (typeof showNotif === 'function') showNotif('error', err.message);
+            else if (typeof showToast === 'function') showToast(err.message);
+          } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '🚀 Guardar e Integrar en el Consejo'; }
+          }
+        }
+
+        async function updateConsejoStatus(id, newStatus) {
+          try {
+            const res = await fetch('/api/consejo/produccion/item/' + id, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: newStatus })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            if (typeof showNotif === 'function') showNotif('success', 'Estado actualizado');
+            else if (typeof showToast === 'function') showToast('Estado actualizado');
+            await loadConsejoData();
+          } catch (err) {
+            if (typeof showNotif === 'function') showNotif('error', err.message);
+            else if (typeof showToast === 'function') showToast(err.message);
+          }
+        }
+
+        async function deleteConsejoItem(id) {
+          if (!confirm('¿Estás seguro de que deseas eliminar este proyecto del Consejo?')) return;
+          try {
+            const res = await fetch('/api/consejo/produccion/item/' + id, {
+              method: 'DELETE'
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            if (typeof showNotif === 'function') showNotif('success', 'Proyecto eliminado');
+            else if (typeof showToast === 'function') showToast('Proyecto eliminado');
+            await loadConsejoData();
+          } catch (err) {
+            if (typeof showNotif === 'function') showNotif('error', err.message);
+            else if (typeof showToast === 'function') showToast(err.message);
+          }
+        }
+
+        if (document.getElementById('tab-consejo')) {
+          loadConsejoData();
         }
       </script>
     </body>
@@ -3444,6 +3766,196 @@ app.post('/api/vendedores/cerrar-caja', async (req, res) => {
   return res.json({ success: true, state });
 });
 
+// --- Gestión del Consejo y Producción General (EL PECADO GRUPO DE TEATRO) ---
+const CONSEJO_PRODUCCION_FILE = path.join(__dirname, '../consejo_produccion.json');
+
+const INITIAL_CONSEJO_DATA = {
+  generalInfo: {
+    groupName: 'El Pecado (Grupo de Teatro)',
+    description: 'Espacio de coordinación general, producción escénica y medios de difusión y promoción (Podcast, Blog y Columna Teatral).',
+    updatedAt: new Date().toISOString()
+  },
+  items: [
+    {
+      id: 'prod_1',
+      category: 'teatro',
+      categoryName: '🎭 Producción Teatral & Grupo',
+      title: 'Planificación de Ensayos y Montaje de Obra',
+      description: 'Definir calendario de ensayos generales, diseño de escenografía, vestuario y fechas en sala para la temporada.',
+      responsible: 'Dirección & Elenco',
+      status: 'en_produccion',
+      date: '2026-08-15',
+      notes: 'Coordinar con la sala teatral la fecha de estreno y prueba de luces.',
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: 'prod_2',
+      category: 'podcast',
+      categoryName: '🎙️ Podcast El Pecado',
+      title: 'Episodio 1: Bambalinas, Poesía y Pasión Teatral',
+      description: 'Grabación y edición del primer episodio del podcast oficial del grupo. Charlas sobre actuación y la trastienda teatral.',
+      responsible: 'Equipo de Audio & Producción',
+      status: 'en_planificacion',
+      date: '2026-08-20',
+      notes: 'Preparar la escaleta del programa, micrófonos y separadores musicales.',
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: 'prod_3',
+      category: 'blog',
+      categoryName: '✍️ Blog Cultural',
+      title: 'Nota de Lanzamiento: Arte Independiente y Poemas Térmicos',
+      description: 'Publicación en el blog oficial sobre cómo El Pecado integra la impresión de versos en ticketera con obras en vivo.',
+      responsible: 'Redacción & Comunicación',
+      status: 'idea',
+      date: '2026-08-25',
+      notes: 'Adjuntar galería de fotos de las funciones y relatos del público.',
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: 'prod_4',
+      category: 'columna',
+      categoryName: '📰 Columna Teatral',
+      title: 'Columna: La Vigencia del Teatro Independiente',
+      description: 'Artículo de opinión y crítica teatral para medios locales y difusión en el sitio elpecado.ar.',
+      responsible: 'Columnista Invitado & Prensa',
+      status: 'publicado',
+      date: '2026-08-01',
+      notes: 'Publicado con excelente recepción en el portal web.',
+      createdAt: new Date().toISOString()
+    }
+  ]
+};
+
+async function getConsejoProduccion() {
+  try {
+    if (fs.existsSync(CONSEJO_PRODUCCION_FILE)) {
+      const content = await fs.promises.readFile(CONSEJO_PRODUCCION_FILE, 'utf8');
+      return JSON.parse(content);
+    }
+  } catch (err) {
+    console.error('[Consejo] Error leyendo archivo de producción:', err);
+  }
+  try {
+    await fs.promises.writeFile(CONSEJO_PRODUCCION_FILE, JSON.stringify(INITIAL_CONSEJO_DATA, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[Consejo] Error guardando archivo inicial de producción:', err);
+  }
+  return INITIAL_CONSEJO_DATA;
+}
+
+async function saveConsejoProduccion(data) {
+  if (!data.generalInfo) data.generalInfo = {};
+  data.generalInfo.updatedAt = new Date().toISOString();
+  await fs.promises.writeFile(CONSEJO_PRODUCCION_FILE, JSON.stringify(data, null, 2), 'utf8');
+}
+
+app.get('/api/consejo/produccion', async (req, res) => {
+  try {
+    const data = await getConsejoProduccion();
+    return res.json({ success: true, data });
+  } catch (err) {
+    return res.status(500).json({ error: 'Error al obtener datos del Consejo de Producción' });
+  }
+});
+
+app.post('/api/consejo/produccion/item', async (req, res) => {
+  try {
+    const { category, title, description, responsible, status, date, notes } = req.body;
+    if (!title || !category || !description) {
+      return res.status(400).json({ error: 'Título, categoría y descripción son obligatorios.' });
+    }
+
+    const data = await getConsejoProduccion();
+    
+    const categoryNamesMap = {
+      'teatro': '🎭 Producción Teatral & Grupo',
+      'podcast': '🎙️ Podcast El Pecado',
+      'blog': '✍️ Blog Cultural',
+      'columna': '📰 Columna Teatral'
+    };
+
+    const newItem = {
+      id: 'prod_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+      category: category || 'teatro',
+      categoryName: categoryNamesMap[category] || '🎭 Producción Teatral & Grupo',
+      title: title.trim(),
+      description: description.trim(),
+      responsible: responsible ? responsible.trim() : 'Equipo General',
+      status: status || 'idea',
+      date: date || new Date().toISOString().split('T')[0],
+      notes: notes ? notes.trim() : '',
+      createdAt: new Date().toISOString()
+    };
+
+    if (!Array.isArray(data.items)) data.items = [];
+    data.items.unshift(newItem);
+    await saveConsejoProduccion(data);
+
+    return res.json({ success: true, item: newItem, message: '¡Propuesta añadida al Consejo de Producción!' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Error al agregar propuesta al Consejo: ' + err.message });
+  }
+});
+
+app.put('/api/consejo/produccion/item/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, title, description, responsible, notes, category, date } = req.body;
+
+    const data = await getConsejoProduccion();
+    if (!Array.isArray(data.items)) data.items = [];
+    const itemIndex = data.items.findIndex(item => item.id === id);
+
+    if (itemIndex === -1) {
+      return res.status(404).json({ error: 'Tema o proyecto no encontrado.' });
+    }
+
+    const categoryNamesMap = {
+      'teatro': '🎭 Producción Teatral & Grupo',
+      'podcast': '🎙️ Podcast El Pecado',
+      'blog': '✍️ Blog Cultural',
+      'columna': '📰 Columna Teatral'
+    };
+
+    if (status !== undefined) data.items[itemIndex].status = status;
+    if (title !== undefined) data.items[itemIndex].title = title.trim();
+    if (description !== undefined) data.items[itemIndex].description = description.trim();
+    if (responsible !== undefined) data.items[itemIndex].responsible = responsible.trim();
+    if (notes !== undefined) data.items[itemIndex].notes = notes.trim();
+    if (date !== undefined) data.items[itemIndex].date = date;
+    if (category !== undefined) {
+      data.items[itemIndex].category = category;
+      data.items[itemIndex].categoryName = categoryNamesMap[category] || data.items[itemIndex].categoryName;
+    }
+
+    await saveConsejoProduccion(data);
+    return res.json({ success: true, item: data.items[itemIndex], message: '¡Proyecto actualizado correctamente!' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Error al actualizar proyecto: ' + err.message });
+  }
+});
+
+app.delete('/api/consejo/produccion/item/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = await getConsejoProduccion();
+    if (!Array.isArray(data.items)) data.items = [];
+    const initialLen = data.items.length;
+
+    data.items = data.items.filter(item => item.id !== id);
+
+    if (data.items.length === initialLen) {
+      return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
+
+    await saveConsejoProduccion(data);
+    return res.json({ success: true, message: '¡Proyecto o tema eliminado del Consejo!' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Error al eliminar proyecto: ' + err.message });
+  }
+});
+
 // --- Cuentas con privilegios de Administrador ---
 const ADMIN_ACCOUNTS = ['vendedor de poemas', 'elpecado', 'admin'];
 
@@ -4248,6 +4760,7 @@ app.get('/escritores', (req, res) => {
           <div class="nav-tabs">
             <button class="tab-btn active" onclick="switchTab('tab-poemas')">📜 Poemas y Estadísticas</button>
             <button class="tab-btn" onclick="switchTab('tab-cargar')">✍️ Cargar Poema</button>
+            <button class="tab-btn" onclick="switchTab('tab-consejo')">🎭 Producción Grupo EL PECADO</button>
             <button class="tab-btn" onclick="switchTab('tab-recompensa')">🏆 Recompensa RFC</button>
           </div>
 
@@ -4387,6 +4900,132 @@ app.get('/escritores', (req, res) => {
               </div>
             </div>
           </div>
+
+          <!-- PESTAÑA CONSEJO DE PRODUCCIÓN GRUPO EL PECADO -->
+          <div id="tab-consejo" class="tab-content">
+            <div class="card" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(20, 28, 48, 0.7) 100%); border-color: rgba(239, 68, 68, 0.3);">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
+                <div>
+                  <h2 style="color: #fff; font-family: 'Playfair Display', serif; font-size: 1.8rem; margin-bottom: 0.3rem;">
+                    🎭 EL PECADO - CONSEJO DE PRODUCCIÓN DEL GRUPO
+                  </h2>
+                  <p style="color: var(--text-muted); font-size: 0.95rem;">
+                    Gestión integral de proyectos teatrales, producción general y medios de difusión (Podcast, Blog y Columna Teatral).
+                  </p>
+                </div>
+                <button onclick="loadConsejoData()" class="btn btn-secondary" style="width: auto; padding: 0.6rem 1.2rem; font-size: 0.85rem; margin: 0; display: inline-flex; align-items: center; gap: 0.4rem;">
+                  🔄 Actualizar Consejo
+                </button>
+              </div>
+
+              <!-- MÉTRICAS DE PRODUCCIÓN DEL GRUPO -->
+              <div class="stats-grid" style="margin-top: 1.5rem;">
+                <div class="stat-card" style="border-color: rgba(239, 68, 68, 0.3);">
+                  <div class="stat-label">Temas en Consejo</div>
+                  <div class="stat-value" id="cntConsejoTotal" style="color: #fff;">0</div>
+                </div>
+                <div class="stat-card" style="border-color: rgba(192, 132, 252, 0.3);">
+                  <div class="stat-label">🎭 Teatro & Montajes</div>
+                  <div class="stat-value" id="cntConsejoTeatro" style="color: var(--primary-color);">0</div>
+                </div>
+                <div class="stat-card" style="border-color: rgba(59, 130, 246, 0.3);">
+                  <div class="stat-label">🎙️ Podcast El Pecado</div>
+                  <div class="stat-value" id="cntConsejoPodcast" style="color: #60a5fa;">0</div>
+                </div>
+                <div class="stat-card" style="border-color: rgba(52, 211, 153, 0.3);">
+                  <div class="stat-label">✍️ Blog Cultural</div>
+                  <div class="stat-value" id="cntConsejoBlog" style="color: var(--success-color);">0</div>
+                </div>
+                <div class="stat-card" style="border-color: rgba(251, 191, 36, 0.3);">
+                  <div class="stat-label">📰 Columna Teatral</div>
+                  <div class="stat-value" id="cntConsejoColumna" style="color: var(--accent-color);">0</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- FORMULARIO DE NUEVO TEMA O PROYECTO -->
+            <div class="card">
+              <h3 style="font-family: 'Playfair Display', serif; color: #fff; font-size: 1.4rem; margin-bottom: 1.2rem; display: flex; align-items: center; gap: 0.5rem;">
+                ➕ Añadir Tema o Proyecto de Producción al Consejo
+              </h3>
+
+              <form id="formConsejoItem" onsubmit="handleCreateConsejoItem(event)">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.2rem; margin-bottom: 1.2rem;">
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label for="cnsCategory">Área / Categoría</label>
+                    <select id="cnsCategory" class="form-control" required style="background: rgba(0, 0, 0, 0.6); color: #fff;">
+                      <option value="teatro">🎭 Producción Teatral & Grupo (Obras/Ensayos)</option>
+                      <option value="podcast">🎙️ Podcast "El Pecado"</option>
+                      <option value="blog">✍️ Blog Cultural & Publicaciones</option>
+                      <option value="columna">📰 Columna Teatral & Crítica</option>
+                    </select>
+                  </div>
+
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label for="cnsTitle">Título del Proyecto o Tema</label>
+                    <input type="text" id="cnsTitle" class="form-control" placeholder="Ej: Temporada de Primavera / Episodio Podcast" required>
+                  </div>
+
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label for="cnsResponsible">Responsable(s) / Equipo</label>
+                    <input type="text" id="cnsResponsible" class="form-control" placeholder="Ej: Dirección, Redacción, Elenco">
+                  </div>
+
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label for="cnsStatus">Estado Inicial</label>
+                    <select id="cnsStatus" class="form-control" style="background: rgba(0, 0, 0, 0.6); color: #fff;">
+                      <option value="idea">💡 Idea Propuesta</option>
+                      <option value="en_planificacion">📌 En Planificación</option>
+                      <option value="en_produccion" selected>🎬 En Producción / En Marcha</option>
+                      <option value="publicado">🚀 Publicado / Completado</option>
+                    </select>
+                  </div>
+
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label for="cnsDate">Fecha Objetivo / Publicación</label>
+                    <input type="date" id="cnsDate" class="form-control">
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="cnsDescription">Descripción General del Tema</label>
+                  <textarea id="cnsDescription" class="form-control" rows="3" placeholder="Detalla los puntos a tratar, temática del podcast, contenido del post de blog o columna..." required></textarea>
+                </div>
+
+                <div class="form-group">
+                  <label for="cnsNotes">Notas Adicionales de Promoción o Producción (Opcional)</label>
+                  <input type="text" id="cnsNotes" class="form-control" placeholder="Ej: Enlace a difusión, lista de invitados, vestuario requerido, etiquetas social media">
+                </div>
+
+                <button type="submit" id="btnConsejoSubmit" class="btn" style="width: auto; padding: 0.8rem 2rem; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); margin-top: 0;">
+                  🚀 Guardar e Integrar en el Consejo
+                </button>
+              </form>
+            </div>
+
+            <!-- FILTROS Y TARJETAS DE PROYECTOS -->
+            <div class="card">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+                <h3 style="font-family: 'Playfair Display', serif; color: #fff; font-size: 1.4rem;">
+                  📋 Tablero del Consejo: Proyectos y Promoción
+                </h3>
+
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                  <button class="btn btn-secondary cns-filter-btn active" onclick="filterConsejoCategory('all', this)" style="padding: 0.4rem 0.8rem; font-size: 0.82rem; margin: 0;">Todas</button>
+                  <button class="btn btn-secondary cns-filter-btn" onclick="filterConsejoCategory('teatro', this)" style="padding: 0.4rem 0.8rem; font-size: 0.82rem; margin: 0;">🎭 Teatro</button>
+                  <button class="btn btn-secondary cns-filter-btn" onclick="filterConsejoCategory('podcast', this)" style="padding: 0.4rem 0.8rem; font-size: 0.82rem; margin: 0;">🎙️ Podcast</button>
+                  <button class="btn btn-secondary cns-filter-btn" onclick="filterConsejoCategory('blog', this)" style="padding: 0.4rem 0.8rem; font-size: 0.82rem; margin: 0;">✍️ Blog</button>
+                  <button class="btn btn-secondary cns-filter-btn" onclick="filterConsejoCategory('columna', this)" style="padding: 0.4rem 0.8rem; font-size: 0.82rem; margin: 0;">📰 Columna</button>
+                </div>
+              </div>
+
+              <div id="consejoItemsContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.2rem;">
+                <div style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: var(--text-muted);">
+                  Cargando proyectos del Consejo de Producción...
+                </div>
+              </div>
+            </div>
+          </div>
         `}
       </div>
 
@@ -4418,6 +5057,10 @@ app.get('/escritores', (req, res) => {
               btn.classList.add('active');
             }
           });
+
+          if (tabId === 'tab-consejo') {
+            loadConsejoData();
+          }
         }
 
         function toggleTutorial() {
@@ -4646,7 +5289,215 @@ app.get('/escritores', (req, res) => {
           }
         }
 
+        // JS interactivo del Consejo de Producción (El Pecado Grupo de Teatro)
+        let currentConsejoItems = [];
+        let currentConsejoFilter = 'all';
+
+        async function loadConsejoData() {
+          try {
+            const res = await fetch('/api/consejo/produccion');
+            if (!res.ok) return;
+            const result = await res.json();
+            if (!result.success || !result.data) return;
+
+            currentConsejoItems = result.data.items || [];
+            renderConsejoUI();
+          } catch (err) {
+            console.error('Error cargando Consejo:', err);
+          }
+        }
+
+        function renderConsejoUI() {
+          const total = currentConsejoItems.length;
+          const teatro = currentConsejoItems.filter(i => i.category === 'teatro').length;
+          const podcast = currentConsejoItems.filter(i => i.category === 'podcast').length;
+          const blog = currentConsejoItems.filter(i => i.category === 'blog').length;
+          const columna = currentConsejoItems.filter(i => i.category === 'columna').length;
+
+          const elTotal = document.getElementById('cntConsejoTotal');
+          const elTeatro = document.getElementById('cntConsejoTeatro');
+          const elPodcast = document.getElementById('cntConsejoPodcast');
+          const elBlog = document.getElementById('cntConsejoBlog');
+          const elColumna = document.getElementById('cntConsejoColumna');
+
+          if (elTotal) elTotal.textContent = total;
+          if (elTeatro) elTeatro.textContent = teatro;
+          if (elPodcast) elPodcast.textContent = podcast;
+          if (elBlog) elBlog.textContent = blog;
+          if (elColumna) elColumna.textContent = columna;
+
+          let filtered = currentConsejoItems;
+          if (currentConsejoFilter !== 'all') {
+            filtered = currentConsejoItems.filter(i => i.category === currentConsejoFilter);
+          }
+
+          const container = document.getElementById('consejoItemsContainer');
+          if (!container) return;
+
+          if (filtered.length === 0) {
+            container.innerHTML = `
+              <div style="grid-column: 1 / -1; text-align: center; padding: 2.5rem; background: rgba(0,0,0,0.3); border-radius: 16px; border: 1px dashed var(--border-color); color: var(--text-muted);">
+                🎭 No hay proyectos o temas registrados en esta categoría aún. ¡Agrega uno arriba!
+              </div>
+            `;
+            return;
+          }
+
+          const statusMap = {
+            'idea': { label: '💡 Idea Propuesta', style: 'background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3);' },
+            'en_planificacion': { label: '📌 En Planificación', style: 'background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);' },
+            'en_produccion': { label: '🎬 En Producción', style: 'background: rgba(192, 132, 252, 0.15); color: #c084fc; border: 1px solid rgba(192, 132, 252, 0.3);' },
+            'publicado': { label: '🚀 Publicado / Listo', style: 'background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3);' }
+          };
+
+          const categoryBadges = {
+            'teatro': '🎭 TEATRO & GRUPO',
+            'podcast': '🎙️ PODCAST',
+            'blog': '✍️ BLOG',
+            'columna': '📰 COLUMNA TEATRAL'
+          };
+
+          container.innerHTML = filtered.map(item => {
+            const st = statusMap[item.status] || statusMap['idea'];
+            const catLabel = categoryBadges[item.category] || item.categoryName || 'PRODUCCIÓN';
+            const dateFormatted = item.date ? new Date(item.date + 'T00:00:00').toLocaleDateString('es-AR') : 'Sin fecha';
+
+            return `
+              <div class="card" style="margin-bottom: 0; background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; justify-content: space-between; transition: transform 0.2s, box-shadow 0.2s;" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform='none'">
+                <div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.8rem; flex-wrap: wrap;">
+                    <span style="font-size: 0.72rem; font-weight: 800; letter-spacing: 1px; padding: 0.25rem 0.6rem; border-radius: 8px; background: rgba(255,255,255,0.06); color: var(--accent-color); border: 1px solid rgba(255,255,255,0.1);">
+                      ${catLabel}
+                    </span>
+                    <span style="font-size: 0.78rem; font-weight: 600; padding: 0.25rem 0.6rem; border-radius: 12px; ${st.style}">
+                      ${st.label}
+                    </span>
+                  </div>
+
+                  <h4 style="color: #fff; font-size: 1.15rem; font-family: 'Playfair Display', serif; margin-bottom: 0.5rem; line-height: 1.3;">
+                    ${item.title}
+                  </h4>
+
+                  <p style="color: var(--text-muted); font-size: 0.88rem; line-height: 1.5; margin-bottom: 1rem; white-space: pre-line;">
+                    ${item.description}
+                  </p>
+
+                  ${item.notes ? `
+                    <div style="background: rgba(255,255,255,0.03); border-left: 3px solid var(--accent-color); padding: 0.5rem 0.8rem; border-radius: 0 8px 8px 0; font-size: 0.82rem; color: #fbecec; margin-bottom: 1rem;">
+                      💡 <strong>Notas:</strong> ${item.notes}
+                    </div>
+                  ` : ''}
+                </div>
+
+                <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.8rem; margin-top: 0.5rem;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.8rem;">
+                    <span>👤 ${item.responsible || 'Grupo El Pecado'}</span>
+                    <span>📅 ${dateFormatted}</span>
+                  </div>
+
+                  <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                    <select onchange="updateConsejoStatus('${item.id}', this.value)" style="flex: 1; padding: 0.4rem 0.6rem; font-size: 0.8rem; border-radius: 8px; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid rgba(255,255,255,0.15); outline: none; cursor: pointer;">
+                      <option value="idea" ${item.status === 'idea' ? 'selected' : ''}>💡 Idea Propuesta</option>
+                      <option value="en_planificacion" ${item.status === 'en_planificacion' ? 'selected' : ''}>📌 En Planificación</option>
+                      <option value="en_produccion" ${item.status === 'en_produccion' ? 'selected' : ''}>🎬 En Producción</option>
+                      <option value="publicado" ${item.status === 'publicado' ? 'selected' : ''}>🚀 Publicado / Listo</option>
+                    </select>
+
+                    <button onclick="deleteConsejoItem('${item.id}')" class="btn btn-secondary" style="width: auto; padding: 0.4rem 0.7rem; font-size: 0.8rem; margin: 0; border-color: rgba(239, 68, 68, 0.3); color: #f87171;" title="Eliminar del Consejo">
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+
+        function filterConsejoCategory(cat, btn) {
+          currentConsejoFilter = cat;
+          document.querySelectorAll('.cns-filter-btn').forEach(b => b.classList.remove('active'));
+          if (btn) btn.classList.add('active');
+          renderConsejoUI();
+        }
+
+        async function handleCreateConsejoItem(event) {
+          event.preventDefault();
+          const category = document.getElementById('cnsCategory').value;
+          const title = document.getElementById('cnsTitle').value.trim();
+          const responsible = document.getElementById('cnsResponsible').value.trim();
+          const status = document.getElementById('cnsStatus').value;
+          const date = document.getElementById('cnsDate').value;
+          const description = document.getElementById('cnsDescription').value.trim();
+          const notes = document.getElementById('cnsNotes').value.trim();
+
+          if (!title || !description) {
+            if (typeof showNotif === 'function') showNotif('error', 'Completa título y descripción');
+            else if (typeof showToast === 'function') showToast('Completa título y descripción');
+            return;
+          }
+
+          const btn = document.getElementById('btnConsejoSubmit');
+          if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+
+          try {
+            const res = await fetch('/api/consejo/produccion/item', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ category, title, responsible, status, date, description, notes })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+
+            if (typeof showNotif === 'function') showNotif('success', '¡Propuesta añadida al Consejo!');
+            else if (typeof showToast === 'function') showToast('¡Propuesta añadida al Consejo!');
+
+            document.getElementById('formConsejoItem').reset();
+            await loadConsejoData();
+          } catch (err) {
+            if (typeof showNotif === 'function') showNotif('error', err.message);
+            else if (typeof showToast === 'function') showToast(err.message);
+          } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '🚀 Guardar e Integrar en el Consejo'; }
+          }
+        }
+
+        async function updateConsejoStatus(id, newStatus) {
+          try {
+            const res = await fetch('/api/consejo/produccion/item/' + id, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: newStatus })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            if (typeof showNotif === 'function') showNotif('success', 'Estado actualizado');
+            else if (typeof showToast === 'function') showToast('Estado actualizado');
+            await loadConsejoData();
+          } catch (err) {
+            if (typeof showNotif === 'function') showNotif('error', err.message);
+            else if (typeof showToast === 'function') showToast(err.message);
+          }
+        }
+
+        async function deleteConsejoItem(id) {
+          if (!confirm('¿Estás seguro de que deseas eliminar este proyecto del Consejo?')) return;
+          try {
+            const res = await fetch('/api/consejo/produccion/item/' + id, {
+              method: 'DELETE'
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            if (typeof showNotif === 'function') showNotif('success', 'Proyecto eliminado');
+            else if (typeof showToast === 'function') showToast('Proyecto eliminado');
+            await loadConsejoData();
+          } catch (err) {
+            if (typeof showNotif === 'function') showNotif('error', err.message);
+            else if (typeof showToast === 'function') showToast(err.message);
+          }
+        }
+
         if (${authorName ? 'true' : 'false'}) loadDashboardData();
+        if (document.getElementById('tab-consejo')) loadConsejoData();
       </script>
     </body>
     </html>
