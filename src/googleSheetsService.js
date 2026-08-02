@@ -212,9 +212,76 @@ export async function fetchAuditHistoryFromSheet() {
         timestamp: row[0] || new Date().toISOString()
       };
     });
+/**
+ * Registra una solicitud de cobro/liquidación de un autor en Google Sheets.
+ * @param {Object} data 
+ */
+export async function appendPayoutRequestRow(data) {
+  const currentSheetId = process.env.GOOGLE_SHEET_ID || spreadsheetId;
+  if (!currentSheetId) return false;
+
+  try {
+    const sheets = await getSheetsClient();
+    if (!sheets) return false;
+
+    const timestamp = new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+    const {
+      author = 'Anónimo',
+      cuitCuil = 'Sin CUIT',
+      wallet = 'Sin Billetera',
+      amountPesos = 0,
+      totalPrints = 0,
+      status = 'Pendiente de Pago'
+    } = data;
+
+    const row = [
+      timestamp,
+      author,
+      cuitCuil,
+      wallet,
+      `$${parseFloat(amountPesos).toFixed(2)}`,
+      totalPrints,
+      status
+    ];
+
+    try {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: currentSheetId,
+        range: 'Solicitudes_Pagos!A:G',
+        valueInputOption: 'USER_ENTERED',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: [row] }
+      });
+      console.log(`[GoogleSheets] Solicitud de pago agregada en 'Solicitudes_Pagos' para el autor ${author} ($${amountPesos}).`);
+      return true;
+    } catch (errTab) {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: currentSheetId,
+        range: 'Auditoria!A:L',
+        valueInputOption: 'USER_ENTERED',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: {
+          values: [[
+            timestamp,
+            'SOLICITUD_PAGO',
+            author,
+            `$${parseFloat(amountPesos).toFixed(2)}`,
+            `Solicitud de cobro (Total impresiones: ${totalPrints})`,
+            author,
+            `CUIT: ${cuitCuil} | Destino: ${wallet}`,
+            '$0.00', '$0.00', '$0.00',
+            `$${parseFloat(amountPesos).toFixed(2)}`,
+            '$0.00'
+          ]]
+        }
+      });
+      console.log(`[GoogleSheets] Solicitud de pago registrada como auditoría para ${author}.`);
+      return true;
+    }
   } catch (error) {
-    console.error('[GoogleSheets] Error al leer el historial desde Google Sheets:', error.message);
-    return null;
+    console.error('[GoogleSheets] Error al registrar solicitud de pago en Google Sheets:', error.message);
+    return false;
   }
 }
+
 

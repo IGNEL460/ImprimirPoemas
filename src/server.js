@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 
 const execFileAsync = promisify(execFile);
 import { getRandomPoem, parsePoemMetadata, getAllPoems } from './poems.js';
-import { appendAuditRow, getSheetsStatus, fetchAuditHistoryFromSheet } from './googleSheetsService.js';
+import { appendAuditRow, getSheetsStatus, fetchAuditHistoryFromSheet, appendPayoutRequestRow } from './googleSheetsService.js';
 import { generateThermalReceiptBase64JS } from './receipt_generator_js.js';
 
 // Cargar variables de entorno
@@ -3653,7 +3653,7 @@ app.get('/api/escritores/dashboard-data', async (req, res) => {
       totalEarnedRFC,
       rfcShareValue: econ.rfcShareValue,
       estimatedPesosVal,
-      minWithdrawalThreshold: 10
+      minWithdrawalThreshold: 1000
     }
   });
 });
@@ -3728,6 +3728,96 @@ app.post('/api/escritores/update-wallet', async (req, res) => {
     return res.status(404).json({ error: 'Autor no encontrado' });
   }
 });
+
+const PAYOUT_REQUESTS_FILE = path.join(__dirname, '../payout_requests.json');
+
+app.post('/api/escritores/request-payout', async (req, res) => {
+  const authorName = getAuthorFromCookie(req);
+  if (!authorName) return res.status(401).json({ error: 'No autenticado' });
+
+  const trimmedName = authorName.trim();
+  const registry = await getAuthorRegistry();
+  const authorData = registry[trimmedName];
+  if (!authorData) return res.status(404).json({ error: 'Autor no encontrado en el registro' });
+
+  if (!authorData.wallet) {
+    return res.status(400).json({ error: 'Debes vincular primero tu CBU, Alias o Billetera en tu perfil.' });
+  }
+
+  // Calcular métricas y saldo del autor
+  const econ = await calculateEconomicStats(registry);
+  let stats = {};
+  try {
+    if (fs.existsSync(STATS_FILE)) {
+      stats = JSON.parse(await fs.promises.readFile(STATS_FILE, 'utf8'));
+    }
+  } catch (e) {}
+
+  let totalPrints = 0;
+  const poemsDir = path.join(__dirname, '../poemas');
+  try {
+    if (fs.existsSync(poemsDir)) {
+      const files = await fs.promises.readdir(poemsDir);
+      for (const file of files.filter(f => f.endsWith('.txt'))) {
+        const filePath = path.join(poemsDir, file);
+        const content = await fs.promises.readFile(filePath, 'utf8');
+        const meta = parsePoemMetadata(file, content);
+        if (meta.author.toLowerCase().trim() === trimmedName.toLowerCase().trim()) {
+          totalPrints += (stats[file] || 0);
+        }
+      }
+    }
+  } catch (e) {}
+
+  const totalEarnedRFC = totalPrints * (authorData.pricePerUse || 1);
+  const estimatedPesosVal = totalEarnedRFC * econ.rfcShareValue;
+
+  const MIN_THRESHOLD_PESOS = 1000;
+  if (estimatedPesosVal < MIN_THRESHOLD_PESOS) {
+    return res.status(400).json({ 
+      error: `Tu saldo acumulado actual ($${estimatedPesosVal.toFixed(2)} ARS) no alcanza el mínimo de $${MIN_THRESHOLD_PESOS} ARS requerido para solicitar cobro.` 
+    });
+  }
+
+  // Guardar en archivo local
+  let payoutRequests = [];
+  try {
+    if (fs.existsSync(PAYOUT_REQUESTS_FILE)) {
+      payoutRequests = JSON.parse(await fs.promises.readFile(PAYOUT_REQUESTS_FILE, 'utf8'));
+    }
+  } catch (e) {}
+
+  const requestObj = {
+    requestId: `payout_${Date.now()}`,
+    author: trimmedName,
+    cuitCuil: authorData.cuitCuil || 'No informado',
+    wallet: authorData.wallet,
+    amountPesos: estimatedPesosVal,
+    totalPrints,
+    status: 'Pendiente de Pago',
+    timestamp: new Date().toISOString()
+  };
+
+  payoutRequests.push(requestObj);
+  await fs.promises.writeFile(PAYOUT_REQUESTS_FILE, JSON.stringify(payoutRequests, null, 2), 'utf8');
+
+  // Registrar la solicitud en Google Sheets
+  const sheetSaved = await appendPayoutRequestRow({
+    author: trimmedName,
+    cuitCuil: authorData.cuitCuil || 'No informado',
+    wallet: authorData.wallet,
+    amountPesos: estimatedPesosVal,
+    totalPrints,
+    status: 'Pendiente de Pago'
+  });
+
+  return res.json({ 
+    success: true, 
+    message: `¡Solicitud de cobro por $${estimatedPesosVal.toFixed(2)} ARS enviada con éxito! Ha sido registrada en Google Sheets para liquidación.`,
+    sheetSaved
+  });
+});
+
 
 app.post('/api/escritores/upload-poem', async (req, res) => {
   const authorName = getAuthorFromCookie(req);
@@ -4284,6 +4374,17 @@ app.get('/escritores', (req, res) => {
                   </div>
                 </div>
               </div>
+
+              <!-- SECCIÓN DE SOLICITUD DE COBRO (MÍNIMO $1000 ARS) -->
+              <div style="margin-top: 2rem; padding: 1.5rem; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 12px; text-align: center;">
+                <h3 style="color: #fff; font-size: 1.2rem; margin-bottom: 0.5rem;">💸 Solicitud de Liquidación y Pago</h3>
+                <p id="payoutProgressText" style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">
+                  El botón de cobro se habilitará automáticamente al alcanzar los $1.000,00 ARS acumulados.
+                </p>
+                <button id="btnRequestPayout" onclick="handleRequestPayout()" class="btn" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); width: 100%; max-width: 420px; margin: 0 auto; opacity: 0.5;" disabled>
+                  🔒 Solicitar Cobro ($1.000,00 ARS Mínimo)
+                </button>
+              </div>
             </div>
           </div>
         `}
@@ -4438,11 +4539,40 @@ app.get('/escritores', (req, res) => {
               document.getElementById('walletInput').value = data.authorData.wallet;
             }
 
-            const badge = document.getElementById('withdrawalStatusBadge');
+            const btnPayout = document.getElementById('btnRequestPayout');
+            const progressText = document.getElementById('payoutProgressText');
             const alertBox = document.getElementById('thresholdAlert');
-            if (data.stats.totalEarnedRFC >= data.stats.minWithdrawalThreshold) {
-              alertBox.className = 'notification success';
-              alertBox.innerHTML = '<strong style="color: #fff;">🎉 ¡Felicidades!</strong> Has alcanzado el saldo mínimo de 10 RFC para retirar.';
+
+            const minThreshold = data.stats.minWithdrawalThreshold || 1000;
+            const currentVal = data.stats.estimatedPesosVal || 0;
+
+            if (currentVal >= minThreshold) {
+              if (alertBox) {
+                alertBox.className = 'notification success';
+                alertBox.innerHTML = '<strong style="color: #fff;">🎉 ¡Felicidades!</strong> Has alcanzado el saldo mínimo de $1.000,00 ARS para solicitar tu cobro.';
+              }
+              if (btnPayout) {
+                btnPayout.disabled = false;
+                btnPayout.style.opacity = '1';
+                btnPayout.innerHTML = '💸 Solicitar Cobro / Liquidación ($' + currentVal.toFixed(2) + ' ARS)';
+              }
+              if (progressText) {
+                progressText.innerHTML = '✅ <strong style="color: var(--success-color);">¡Opción de Cobro Habilitada!</strong> Al hacer clic, se registrará la solicitud en Google Sheets para procesar tu pago.';
+              }
+            } else {
+              const needed = minThreshold - currentVal;
+              if (alertBox) {
+                alertBox.className = 'notification info';
+                alertBox.innerHTML = '💡 <strong>Umbral Mínimo de Retiro:</strong> Debes acumular al menos <strong>$1.000,00 ARS</strong> en impresiones de tus poemas para solicitar la transferencia.';
+              }
+              if (btnPayout) {
+                btnPayout.disabled = true;
+                btnPayout.style.opacity = '0.5';
+                btnPayout.innerHTML = '🔒 Solicitar Cobro ($1.000,00 ARS Mínimo)';
+              }
+              if (progressText) {
+                progressText.innerHTML = '⏳ Te faltan <strong>$' + needed.toFixed(2) + ' ARS</strong> acumulados para alcanzar el mínimo de $1.000,00 ARS y habilitar la opción de cobro.';
+              }
             }
           } catch (e) {
             console.error('Error cargando dashboard:', e);
@@ -4464,6 +4594,24 @@ app.get('/escritores', (req, res) => {
             loadDashboardData();
           } catch (e) {
             showNotif('error', e.message);
+          }
+        }
+
+        async function handleRequestPayout() {
+          const btn = document.getElementById('btnRequestPayout');
+          if (btn) btn.disabled = true;
+          try {
+            const res = await fetch('/api/escritores/request-payout', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            showNotif('success', data.message);
+            loadDashboardData();
+          } catch (e) {
+            showNotif('error', e.message);
+            if (btn) btn.disabled = false;
           }
         }
 
