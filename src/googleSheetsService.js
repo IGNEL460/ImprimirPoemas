@@ -174,3 +174,47 @@ export async function getSheetsStatus() {
     authType: hasEnvCreds ? 'Variable de Entorno' : (hasFileCreds ? 'Archivo credentials.json' : 'Ninguna')
   };
 }
+
+/**
+ * Lee todo el historial de transacciones desde la planilla de Google Sheets.
+ * Permite restaurar el estado completo en memoria al reiniciar el servidor en Render.
+ */
+export async function fetchAuditHistoryFromSheet() {
+  const currentSheetId = process.env.GOOGLE_SHEET_ID || spreadsheetId;
+  if (!currentSheetId) return null;
+
+  try {
+    const sheets = await getSheetsClient();
+    if (!sheets) return null;
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: currentSheetId,
+      range: 'Auditoria!A2:L2000',
+    });
+
+    const rows = response.data.values || [];
+    if (rows.length === 0) return [];
+
+    return rows.map((row, index) => {
+      const parseMoney = (val) => parseFloat(String(val || '0').replace('$', '').replace(',', '').trim()) || 0;
+      return {
+        paymentId: row[1] || `sheet_row_${index + 1}`,
+        vendor: row[2] || 'Sin Evento',
+        amount: parseMoney(row[3]),
+        title: row[4] || 'Sin Título',
+        author: row[5] || 'Anónimo',
+        copyrightStatus: row[6] || 'Dominio Público',
+        mpFee: parseMoney(row[7]),
+        taxValue: parseMoney(row[8]),
+        paperCost: parseMoney(row[9]),
+        netAmount: parseMoney(row[10]),
+        reserveAllocated: parseMoney(row[11]),
+        timestamp: row[0] || new Date().toISOString()
+      };
+    });
+  } catch (error) {
+    console.error('[GoogleSheets] Error al leer el historial desde Google Sheets:', error.message);
+    return null;
+  }
+}
+

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 
 const execFileAsync = promisify(execFile);
 import { getRandomPoem, parsePoemMetadata, getAllPoems } from './poems.js';
-import { appendAuditRow, getSheetsStatus } from './googleSheetsService.js';
+import { appendAuditRow, getSheetsStatus, fetchAuditHistoryFromSheet } from './googleSheetsService.js';
 import { generateThermalReceiptBase64JS } from './receipt_generator_js.js';
 
 // Cargar variables de entorno
