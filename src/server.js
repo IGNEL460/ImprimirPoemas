@@ -2955,6 +2955,9 @@ async function recordPayment(paymentId, amount, filename, author, title, vendor 
     await fs.promises.writeFile(PAYMENT_HISTORY_FILE, JSON.stringify(history, null, 2), 'utf8');
     console.log(`[Historial] Pago ${paymentId} ($${grossAmount}) registrado correctamente (Vendedor: ${vendor}, Neto: $${netAmount}, Reserva RFC: $${reserveAllocated}).`);
 
+    // Incrementar conteo en estadísticas de poemas de forma infalible
+    await incrementPoemPrint(filename);
+
     // Sincronizar en segundo plano con Google Sheets API para auditoría perpetua en la nube
     try {
       const sheetSaved = await appendAuditRow({
@@ -3507,6 +3510,19 @@ async function calculateEconomicStats(registry) {
       payments = JSON.parse(await fs.promises.readFile(PAYMENT_HISTORY_FILE, 'utf8'));
     }
   } catch (e) {}
+
+  // Reconciliación automática para asegurar que stats refleje los cobros reales registrados
+  const historyCounts = {};
+  for (const p of payments) {
+    if (p.filename) {
+      historyCounts[p.filename] = (historyCounts[p.filename] || 0) + 1;
+    }
+  }
+  for (const fn in historyCounts) {
+    if ((stats[fn] || 0) < historyCounts[fn]) {
+      stats[fn] = historyCounts[fn];
+    }
+  }
 
   // 1. Recaudación bruta (tarjetas + efectivo registrados)
   const totalCollected = payments.reduce((acc, curr) => acc + (curr.amount || 0), 0);
