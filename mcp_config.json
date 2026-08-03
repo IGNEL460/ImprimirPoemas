@@ -4,7 +4,10 @@
       "url": "https://mcp.mercadopago.com/mcp"
     },
     "render-mcp-server": {
-      "url": "https://mcp.render.com/mcp"
+      "url": "https://mcp.render.com/mcp",
+      "headers": {
+        "Authorization": "Bearer rnd_SxjS0tPT9fqXMU2SrUyPVlmBpzQL"
+      }
     }
   }
 }
