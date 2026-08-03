@@ -5327,11 +5327,9 @@ app.get('/escritores', (req, res) => {
           if (!container) return;
 
           if (filtered.length === 0) {
-            container.innerHTML = `
-              <div style="grid-column: 1 / -1; text-align: center; padding: 2.5rem; background: rgba(0,0,0,0.3); border-radius: 16px; border: 1px dashed var(--border-color); color: var(--text-muted);">
-                🎭 No hay proyectos o temas registrados en esta categoría aún. ¡Agrega uno arriba!
-              </div>
-            `;
+            container.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 2.5rem; background: rgba(0,0,0,0.3); border-radius: 16px; border: 1px dashed var(--border-color); color: var(--text-muted);">' +
+                '🎭 No hay proyectos o temas registrados en esta categoría aún. ¡Agrega uno arriba!' +
+              '</div>';
             return;
           }
 
@@ -5354,54 +5352,48 @@ app.get('/escritores', (req, res) => {
             const catLabel = categoryBadges[item.category] || item.categoryName || 'PRODUCCIÓN';
             const dateFormatted = item.date ? new Date(item.date + 'T00:00:00').toLocaleDateString('es-AR') : 'Sin fecha';
 
-            return `
-              <div class="card" style="margin-bottom: 0; background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; justify-content: space-between; transition: transform 0.2s, box-shadow 0.2s;" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform='none'">
-                <div>
-                  <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.8rem; flex-wrap: wrap;">
-                    <span style="font-size: 0.72rem; font-weight: 800; letter-spacing: 1px; padding: 0.25rem 0.6rem; border-radius: 8px; background: rgba(255,255,255,0.06); color: var(--accent-color); border: 1px solid rgba(255,255,255,0.1);">
-                      ${catLabel}
-                    </span>
-                    <span style="font-size: 0.78rem; font-weight: 600; padding: 0.25rem 0.6rem; border-radius: 12px; ${st.style}">
-                      ${st.label}
-                    </span>
-                  </div>
+            const notesHtml = item.notes ? (
+              '<div style="background: rgba(255,255,255,0.03); border-left: 3px solid var(--accent-color); padding: 0.5rem 0.8rem; border-radius: 0 8px 8px 0; font-size: 0.82rem; color: #fbecec; margin-bottom: 1rem;">' +
+                '💡 <strong>Notas:</strong> ' + item.notes +
+              '</div>'
+            ) : '';
 
-                  <h4 style="color: #fff; font-size: 1.15rem; font-family: 'Playfair Display', serif; margin-bottom: 0.5rem; line-height: 1.3;">
-                    ${item.title}
-                  </h4>
-
-                  <p style="color: var(--text-muted); font-size: 0.88rem; line-height: 1.5; margin-bottom: 1rem; white-space: pre-line;">
-                    ${item.description}
-                  </p>
-
-                  ${item.notes ? `
-                    <div style="background: rgba(255,255,255,0.03); border-left: 3px solid var(--accent-color); padding: 0.5rem 0.8rem; border-radius: 0 8px 8px 0; font-size: 0.82rem; color: #fbecec; margin-bottom: 1rem;">
-                      💡 <strong>Notas:</strong> ${item.notes}
-                    </div>
-                  ` : ''}
-                </div>
-
-                <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.8rem; margin-top: 0.5rem;">
-                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.8rem;">
-                    <span>👤 ${item.responsible || 'Grupo El Pecado'}</span>
-                    <span>📅 ${dateFormatted}</span>
-                  </div>
-
-                  <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                    <select onchange="updateConsejoStatus('${item.id}', this.value)" style="flex: 1; padding: 0.4rem 0.6rem; font-size: 0.8rem; border-radius: 8px; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid rgba(255,255,255,0.15); outline: none; cursor: pointer;">
-                      <option value="idea" ${item.status === 'idea' ? 'selected' : ''}>💡 Idea Propuesta</option>
-                      <option value="en_planificacion" ${item.status === 'en_planificacion' ? 'selected' : ''}>📌 En Planificación</option>
-                      <option value="en_produccion" ${item.status === 'en_produccion' ? 'selected' : ''}>🎬 En Producción</option>
-                      <option value="publicado" ${item.status === 'publicado' ? 'selected' : ''}>🚀 Publicado / Listo</option>
-                    </select>
-
-                    <button onclick="deleteConsejoItem('${item.id}')" class="btn btn-secondary" style="width: auto; padding: 0.4rem 0.7rem; font-size: 0.8rem; margin: 0; border-color: rgba(239, 68, 68, 0.3); color: #f87171;" title="Eliminar del Consejo">
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-              </div>
-            `;
+            return '<div class="card" style="margin-bottom: 0; background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; justify-content: space-between; transition: transform 0.2s, box-shadow 0.2s;" onmouseenter="this.style.transform=\'translateY(-2px)\'" onmouseleave="this.style.transform=\'none\'">' +
+                '<div>' +
+                  '<div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.8rem; flex-wrap: wrap;">' +
+                    '<span style="font-size: 0.72rem; font-weight: 800; letter-spacing: 1px; padding: 0.25rem 0.6rem; border-radius: 8px; background: rgba(255,255,255,0.06); color: var(--accent-color); border: 1px solid rgba(255,255,255,0.1);">' +
+                      catLabel +
+                    '</span>' +
+                    '<span style="font-size: 0.78rem; font-weight: 600; padding: 0.25rem 0.6rem; border-radius: 12px; ' + st.style + '">' +
+                      st.label +
+                    '</span>' +
+                  '</div>' +
+                  '<h4 style="color: #fff; font-size: 1.15rem; font-family: \'Playfair Display\', serif; margin-bottom: 0.5rem; line-height: 1.3;">' +
+                    item.title +
+                  '</h4>' +
+                  '<p style="color: var(--text-muted); font-size: 0.88rem; line-height: 1.5; margin-bottom: 1rem; white-space: pre-line;">' +
+                    item.description +
+                  '</p>' +
+                  notesHtml +
+                '</div>' +
+                '<div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.8rem; margin-top: 0.5rem;">' +
+                  '<div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.8rem;">' +
+                    '<span>👤 ' + (item.responsible || 'Grupo El Pecado') + '</span>' +
+                    '<span>📅 ' + dateFormatted + '</span>' +
+                  '</div>' +
+                  '<div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">' +
+                    '<select onchange="updateConsejoStatus(\'' + item.id + '\', this.value)" style="flex: 1; padding: 0.4rem 0.6rem; font-size: 0.8rem; border-radius: 8px; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid rgba(255,255,255,0.15); outline: none; cursor: pointer;">' +
+                      '<option value="idea" ' + (item.status === 'idea' ? 'selected' : '') + '>💡 Idea Propuesta</option>' +
+                      '<option value="en_planificacion" ' + (item.status === 'en_planificacion' ? 'selected' : '') + '>📌 En Planificación</option>' +
+                      '<option value="en_produccion" ' + (item.status === 'en_produccion' ? 'selected' : '') + '>🎬 En Producción</option>' +
+                      '<option value="publicado" ' + (item.status === 'publicado' ? 'selected' : '') + '>🚀 Publicado / Listo</option>' +
+                    '</select>' +
+                    '<button onclick="deleteConsejoItem(\'' + item.id + '\')" class="btn btn-secondary" style="width: auto; padding: 0.4rem 0.7rem; font-size: 0.8rem; margin: 0; border-color: rgba(239, 68, 68, 0.3); color: #f87171;" title="Eliminar del Consejo">' +
+                      '🗑️' +
+                    '</button>' +
+                  '</div>' +
+                '</div>' +
+              '</div>';
           }).join('');
         }
 
