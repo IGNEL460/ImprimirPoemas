@@ -92,11 +92,10 @@ def generate_thermal_receipt_base64(poem_text, logo_path=None):
     header_title = '🍎 UN POEMA PARA TI 🍎'
     footer_lines = [
         '* * * * *',
-        'Gracias por tu colaboración',
-        'y por apoyar el arte.',
+        'Gracias por apoyar el arte.',
         '--------------------------------',
         'Encuentra más información en:',
-        'elpecado.ar'
+        'www.elpecado.ar'
     ]
 
     padding_top = 10
