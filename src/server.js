@@ -398,6 +398,11 @@ app.get('/', async (req, res) => {
   const hasToken = accessToken && !accessToken.includes('tu_access_token');
   const hasTerminal = process.env.MP_TERMINAL_ID && !process.env.MP_TERMINAL_ID.includes('tu_terminal_id');
 
+  const reqProto = req.headers['x-forwarded-proto'] || req.protocol;
+  const reqHost = req.get('host');
+  const publicBaseUrl = process.env.RENDER_EXTERNAL_URL || `${reqProto}://${reqHost}`;
+  const webhookUrlText = `${publicBaseUrl}/webhook`;
+
   let terminals = [];
   let terminalError = null;
 
@@ -876,10 +881,10 @@ app.get('/', async (req, res) => {
                 <span class="info-value">${hasTerminal ? 'CONFIGURADO (✓)' : 'FALTA (✗)'}</span>
               </div>
 
-              <button id="btnTest" class="btn" ${!hasToken || !hasTerminal ? 'disabled' : ''}>
+              <button id="btnTest" class="btn" ${!hasToken || !hasTerminal ? 'disabled' : ''} onclick="probarImpresionManual(this)">
                 ✨ Imprimir Poema de Prueba
               </button>
-              <button id="btnTestLogo" class="btn btn-secondary" ${!hasToken || !hasTerminal ? 'disabled' : ''} style="margin-top: 0.5rem; border-color: rgba(192, 132, 252, 0.3);">
+              <button id="btnTestLogo" class="btn btn-secondary" ${!hasToken || !hasTerminal ? 'disabled' : ''} style="margin-top: 0.5rem; border-color: rgba(192, 132, 252, 0.3);" onclick="probarLogoManual(this)">
                 🖼️ Imprimir Logo de Prueba
               </button>
             </div>
@@ -890,7 +895,7 @@ app.get('/', async (req, res) => {
                 Configure esta URL de notificación en su panel de desarrollador de Mercado Pago para procesar cobros de Point Smart automáticamente:
               </p>
               <span class="info-label">Dirección Webhook (URL pública):</span>
-              <div class="code-block" id="webhookUrl">Cargando...</div>
+              <div class="code-block" id="webhookUrl">${webhookUrlText}</div>
             </div>
 
             <div class="card">
@@ -1308,40 +1313,62 @@ app.get('/', async (req, res) => {
         }
 
         // Terminales y Pruebas
-        const btnTest = document.getElementById('btnTest');
-        if (btnTest) {
-          btnTest.addEventListener('click', async () => {
-            btnTest.disabled = true;
-            btnTest.textContent = 'Enviando...';
-            try {
-              const res = await fetch('/test-print', { method: 'POST' });
-              if (res.ok) showToast('¡Poema enviado a la ticketera!');
-              else showToast('Error al imprimir');
-            } catch (err) {
-              showToast('Error de red.');
-            } finally {
-              btnTest.disabled = false;
-              btnTest.textContent = '✨ Imprimir Poema de Prueba';
+        async function probarImpresionManual(btn) {
+          if (!btn) btn = document.getElementById('btnTest');
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Enviando...';
+          }
+          try {
+            const res = await fetch('/test-print', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              showToast('✨ ¡Poema enviado a la ticketera!');
+            } else {
+              showToast('⚠️ Error al imprimir: ' + (data.error || 'Respuesta inválida'));
             }
-          });
+          } catch (err) {
+            showToast('❌ Error de red: ' + err.message);
+          } finally {
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = '✨ Imprimir Poema de Prueba';
+            }
+          }
+        }
+
+        async function probarLogoManual(btn) {
+          if (!btn) btn = document.getElementById('btnTestLogo');
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Enviando logo...';
+          }
+          try {
+            const res = await fetch('/test-print-logo', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              showToast('🖼️ ¡Logo de prueba enviado!');
+            } else {
+              showToast('⚠️ Error al imprimir logo: ' + (data.error || 'Respuesta inválida'));
+            }
+          } catch (err) {
+            showToast('❌ Error de red: ' + err.message);
+          } finally {
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = '🖼️ Imprimir Logo de Prueba';
+            }
+          }
+        }
+
+        const btnTest = document.getElementById('btnTest');
+        if (btnTest && !btnTest.getAttribute('onclick')) {
+          btnTest.addEventListener('click', () => probarImpresionManual(btnTest));
         }
 
         const btnTestLogo = document.getElementById('btnTestLogo');
-        if (btnTestLogo) {
-          btnTestLogo.addEventListener('click', async () => {
-            btnTestLogo.disabled = true;
-            btnTestLogo.textContent = 'Enviando logo...';
-            try {
-              const res = await fetch('/test-print-logo', { method: 'POST' });
-              if (res.ok) showToast('¡Logo de prueba enviado!');
-              else showToast('Error al imprimir logo');
-            } catch (err) {
-              showToast('Error de red.');
-            } finally {
-              btnTestLogo.disabled = false;
-              btnTestLogo.textContent = '🖼️ Imprimir Logo de Prueba';
-            }
-          });
+        if (btnTestLogo && !btnTestLogo.getAttribute('onclick')) {
+          btnTestLogo.addEventListener('click', () => probarLogoManual(btnTestLogo));
         }
 
         const btnCharge = document.getElementById('btnCharge');
