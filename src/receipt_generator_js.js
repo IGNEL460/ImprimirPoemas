@@ -136,12 +136,12 @@ export async function generateThermalReceiptBase64JS(poemText, customLogoPath = 
     for (let i = 0; i < footerLines.length; i++) {
       const line = footerLines[i];
       if (line.includes('elpecado.ar')) {
-        ctx.font = 'bold 14px sans-serif';
+        ctx.font = 'bold 18px sans-serif';
       } else {
         ctx.font = '14px sans-serif';
       }
       ctx.fillText(line, RECEIPT_WIDTH / 2, currY);
-      currY += (line.includes('elpecado.ar') ? 24 : lineHeightFooter);
+      currY += (line.includes('elpecado.ar') ? 28 : lineHeightFooter);
     }
 
     // 5. Binarizar a 1-bit monocromo para reducir el tamaño del Base64 de ~120KB a ~12KB
