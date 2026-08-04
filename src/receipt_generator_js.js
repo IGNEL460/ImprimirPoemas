@@ -80,7 +80,7 @@ export async function generateThermalReceiptBase64JS(poemText, customLogoPath = 
     const paddingLogoTitle = 10;
     const paddingTitlePoem = 14;
     const paddingPoemFooter = 16;
-    const paddingBottom = 18;
+    const paddingBottom = 40;
 
     const lineHeightBody = 22;
     const lineHeightFooter = 20;

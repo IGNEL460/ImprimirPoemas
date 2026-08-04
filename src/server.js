@@ -147,7 +147,7 @@ async function formatPoemForPoint(poem) {
   content += `{br}{center}{s}Gracias por apoyar el arte.{/s}{/center}`;
   content += `{center}--------------------------------{/center}`;
   content += `{center}{s}Encuentra mas info en:{/s}{/center}`;
-  content += `{center}{s}elpecado.ar{/s}{/center}`;
+  content += `{center}{s}elpecado.ar{/s}{/center}{br}{br}`;
 
   // La API requiere al menos 100 caracteres.
   // Rellenar con espacios en blanco en lugar de saltos de línea para NO desperdiciar papel.
