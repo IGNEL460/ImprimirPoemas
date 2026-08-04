@@ -59,12 +59,14 @@ def generate_thermal_receipt_base64(poem_text, logo_path=None):
             bold_path = font_path.replace('arial.ttf', 'arialbd.ttf').replace('segoeui.ttf', 'segoeuib.ttf')
             if os.path.exists(bold_path):
                 font_bold = ImageFont.truetype(bold_path, 15)
+                font_url = ImageFont.truetype(bold_path, 20)
             else:
                 font_bold = ImageFont.truetype(font_path, 15)
+                font_url = ImageFont.truetype(font_path, 20)
         else:
-            font_title = font_body = font_footer = font_bold = ImageFont.load_default()
+            font_title = font_body = font_footer = font_bold = font_url = ImageFont.load_default()
     except Exception:
-        font_title = font_body = font_footer = font_bold = ImageFont.load_default()
+        font_title = font_body = font_footer = font_bold = font_url = ImageFont.load_default()
 
     # 3. Word Wrap
     def wrap_line(text, max_chars=32):
@@ -107,7 +109,7 @@ def generate_thermal_receipt_base64(poem_text, logo_path=None):
     line_height_footer = 20
 
     h_poem = sum(line_height_body if l != '' else 10 for l in wrapped_lines)
-    h_footer = sum(24 if l == 'elpecado.ar' else line_height_footer for l in footer_lines)
+    h_footer = sum(28 if l == 'www.elpecado.ar' else line_height_footer for l in footer_lines)
 
     total_height = (padding_top + target_logo_height + 
                     padding_between_logo_title + 26 + 
@@ -145,9 +147,9 @@ def generate_thermal_receipt_base64(poem_text, logo_path=None):
 
     # 7. Draw Footer Lines
     for i, line in enumerate(footer_lines):
-        if line == 'elpecado.ar':
-            f = font_bold
-            lh = 24
+        if line == 'www.elpecado.ar':
+            f = font_url
+            lh = 28
         elif line == 'Encuentra más información en:':
             f = font_footer
             lh = line_height_footer
