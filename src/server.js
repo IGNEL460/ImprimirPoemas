@@ -1278,7 +1278,8 @@ app.get('/', async (req, res) => {
 
           const btns = document.querySelectorAll('.tab-btn');
           btns.forEach(btn => {
-            if (btn.getAttribute('onclick').includes(tabId)) {
+            const onclickAttr = btn.getAttribute('onclick');
+            if (onclickAttr && onclickAttr.includes(tabId)) {
               btn.classList.add('active');
             }
           });
@@ -5075,7 +5076,8 @@ app.get('/escritores', (req, res) => {
 
           const btns = document.querySelectorAll('.tab-btn');
           btns.forEach(btn => {
-            if (btn.getAttribute('onclick').includes(tabId)) {
+            const onclickAttr = btn.getAttribute('onclick');
+            if (onclickAttr && onclickAttr.includes(tabId)) {
               btn.classList.add('active');
             }
           });
