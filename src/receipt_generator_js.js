@@ -70,11 +70,12 @@ export async function generateThermalReceiptBase64JS(poemText, customLogoPath = 
 
     const headerTitle = '🍎 UN POEMA PARA TI 🍎';
     const footerLines = [
-      '{br}{center}{s}Gracias por apoyar el arte.{/s}{br}',
-
-      '{br}{center}--------------------------{/s}',
-      '{br}{center}{s}Encuentra mas info en:{/s}{br}',
-      '{br}{center}{s}elpecado.ar{/s}{br}',
+      'Gracias por apoyar el arte.',
+      '',                           // 👈 Línea vacía para separar el primer sector
+      '--------------------------',
+      '',                           // 👈 Línea vacía para separar el divisor
+      'Encuentra mas info en:',
+      'elpecado.ar',
     ];
 
     const paddingTop = 12;
