@@ -71,7 +71,7 @@ export async function generateThermalReceiptBase64JS(poemText, customLogoPath = 
     const headerTitle = '🍎 UN POEMA PARA TI 🍎';
     const footerLines = [
       'Gracias por apoyar el arte.',
-      'Encuentra mas info en:',
+      'Mas info en:',
       '',
       'elpecado.ar',
     ];

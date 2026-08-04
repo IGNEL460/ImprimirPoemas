@@ -145,7 +145,7 @@ async function formatPoemForPoint(poem) {
   content += `{center}{b}🍎 UN POEMA PARA TI 🍎{/b}{/center}{br}`;
   content += formattedLines.join('{br}');
   content += `{br}{center}{s}Gracias por apoyar el arte.{/s}{/center}`;
-  content += `{center}{s}Encuentra mas info en:{/s}{/center}{br}`;
+  content += `{center}{s}Mas info en:{/s}{/center}{br}`;
   content += `{center}{s}elpecado.ar{/s}{/center}{br}{br}`;
 
 
