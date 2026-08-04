@@ -4,6 +4,9 @@
   "description": "Imprime poemas al azar usando la impresora de Mercado Pago Point Smart al recibir pagos",
   "main": "src/server.js",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js"
@@ -13,8 +16,8 @@
     "axios": "^1.7.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "googleapis": "^134.0.0"
+    "express": "^4.21.0",
+    "googleapis": "^174.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.3"
