@@ -144,10 +144,11 @@ async function formatPoemForPoint(poem) {
   */
   content += `{center}{b}🍎 UN POEMA PARA TI 🍎{/b}{/center}{br}`;
   content += formattedLines.join('{br}');
-  content += `{br}{center}{s}Gracias por apoyar el arte.{/s}{/center}`;
-  content += `{center}--------------------------------{/center}`;
-  content += `{center}{s}Encuentra mas info en:{/s}{/center}`;
-  content += `{center}{s}elpecado.ar{/s}{/center}{br}{br}`;
+  content += `{center}--------------------------{br}`;
+  content += `{center}{s}Gracias por apoyar el arte.{/s}{br}`;
+  content += `{center}Encuentra mas info en:{br}{/s}`;
+  content += `{center}{s}elpecado.ar{/s}{br}{br}`;
+
 
   // La API requiere al menos 100 caracteres.
   // Rellenar con espacios en blanco en lugar de saltos de línea para NO desperdiciar papel.
@@ -205,7 +206,7 @@ async function printOnTerminal(text) {
 // Enviar logotipo del Pecado a la terminal (Imagen Base64)
 async function printImageOnTerminal() {
   if (!logoBase64 && fs.existsSync(logoPath)) {
-    try { logoBase64 = fs.readFileSync(logoPath, 'base64'); } catch(e){}
+    try { logoBase64 = fs.readFileSync(logoPath, 'base64'); } catch (e) { }
   }
 
   if (!logoBase64) {
@@ -279,7 +280,7 @@ function startKeepAliveHeartbeat() {
         return;
       }
       const selfUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-      await axios.get(`${selfUrl}/health`).catch(() => {});
+      await axios.get(`${selfUrl}/health`).catch(() => { });
       console.log(`[Keep-Alive] Latido de salud enviado a ${selfUrl}/health.`);
     } catch (err) {
       console.warn('[Keep-Alive] Error en el latido:', err.message);
@@ -423,8 +424,8 @@ app.get('/', async (req, res) => {
     const statusLabel = (term.status || 'unknown').toUpperCase();
     const modeColor = isPdv ? 'var(--success-color)' : '#fbbf24';
     const modeLabel = term.operating_mode || 'STANDALONE';
-    
-    const actionButton = !isPdv ? 
+
+    const actionButton = !isPdv ?
       `<button class="btn btn-secondary" style="width: auto; margin-top: 0; padding: 0.5rem 1rem; font-size: 0.85rem; border-color: rgba(52, 211, 153, 0.3);" onclick="changeMode('${term.id}', 'PDV')">🔌 Activar Modo PDV</button>` :
       `<button class="btn btn-secondary" style="width: auto; margin-top: 0; padding: 0.5rem 1rem; font-size: 0.85rem; border-color: rgba(248, 113, 113, 0.3);" onclick="changeMode('${term.id}', 'STANDALONE')">🔄 Cambiar a Autónomo (STANDALONE)</button>`;
 
@@ -473,14 +474,14 @@ app.get('/', async (req, res) => {
       const files = fs.readdirSync(poemsDir);
       poemsCount = files.filter(f => f.endsWith('.txt')).length;
     }
-  } catch (e) {}
+  } catch (e) { }
 
   let stats = {};
   try {
     if (fs.existsSync(STATS_FILE)) {
       stats = JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'));
     }
-  } catch (e) {}
+  } catch (e) { }
 
   let statsList = [];
   try {
@@ -496,12 +497,12 @@ app.get('/', async (req, res) => {
         statsList.push({ file, title, author, prints, status });
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   statsList.sort((a, b) => b.prints - a.prints);
 
   const statsHtml = statsList.map(item => {
-    const statusStyle = item.status.isEligibleForPayment 
+    const statusStyle = item.status.isEligibleForPayment
       ? `background: rgba(251, 191, 36, 0.1); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.2);`
       : `background: rgba(52, 211, 153, 0.1); color: var(--success-color); border: 1px solid rgba(52, 211, 153, 0.2);`;
 
@@ -3005,7 +3006,7 @@ app.post('/change-terminal-mode', async (req, res) => {
 
   try {
     console.log(`[Configuración] Configurando terminal ${terminalId} en modo: ${mode}...`);
-    
+
     // Llamado PATCH a la API de Mercado Pago
     const response = await axios.patch(
       'https://api.mercadopago.com/terminals/v1/setup',
@@ -3238,7 +3239,7 @@ function markPaymentAsPrinted(paymentId) {
   if (printedPaymentsCache.has(idStr)) return;
 
   printedPaymentsCache.add(idStr);
-  
+
   try {
     const data = Array.from(printedPaymentsCache);
     fs.writeFileSync(PRINTED_PAYMENTS_FILE, JSON.stringify(data, null, 2), 'utf8');
@@ -3257,19 +3258,19 @@ async function recordPayment(paymentId, amount, filename, author, title, vendor 
       const fileContent = await fs.promises.readFile(PAYMENT_HISTORY_FILE, 'utf8');
       history = JSON.parse(fileContent);
     }
-    
+
     // Calcular costos basándose en taxes_config.json
     const config = await getTaxesConfig();
     const grossAmount = parseFloat(amount) || 0;
-    
+
     const isCash = paymentId.toString().startsWith('cash_');
     const mpFee = isCash ? 0 : ((grossAmount * config.mpFeePercent / 100) + config.mpFeeFixed);
     const taxValue = grossAmount * config.taxPercent / 100;
     const paperCost = config.paperCostFixed;
-    
+
     const netAmount = grossAmount - mpFee - taxValue - paperCost;
     const reserveAllocated = Math.max(0, netAmount * (config.reservePercent / 100));
-    
+
     // Determinar la clasificación de derechos de autor (Vivo vs. Dominio Público)
     const copyrightInfo = getCopyrightStatus(author);
     const copyrightStatus = copyrightInfo.label;
@@ -3290,7 +3291,7 @@ async function recordPayment(paymentId, amount, filename, author, title, vendor 
       netAmount,
       reserveAllocated
     });
-    
+
     // Limitar el historial a 1000 transacciones para evitar saturar el disco
     if (history.length > 1000) {
       history = history.slice(-1000);
@@ -3341,11 +3342,11 @@ async function executePrintActionWithRetry(printFn, actionName, maxAttempts = 10
     } catch (error) {
       const errorDetails = error.response?.data ? JSON.stringify(error.response.data) : error.message;
       console.warn(`[Impresora] [${actionName}] Intento ${attempts} falló. Detalles del error:`, errorDetails);
-      
+
       if (attempts >= maxAttempts) {
         throw error;
       }
-      
+
       console.log(`[Impresora] [${actionName}] La terminal podría estar ocupada. Reintentando en ${delayMs / 1000} segundos...`);
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
@@ -3355,7 +3356,7 @@ async function executePrintActionWithRetry(printFn, actionName, maxAttempts = 10
 // Función global para procesar un pago aprobado, registrar historial, imprimir logo y poema
 async function processApprovedPayment(paymentId, amount, orderId = null) {
   if (!paymentId) return;
-  
+
   const paymentIdStr = paymentId.toString();
   if (isPaymentAlreadyPrinted(paymentIdStr)) {
     console.log(`[Impresora] El pago ${paymentIdStr} ya fue procesado e impreso. Evitando duplicado.`);
@@ -3370,7 +3371,7 @@ async function processApprovedPayment(paymentId, amount, orderId = null) {
   }
 
   console.log(`[Impresora] ¡Pago aprobado confirmado! ID: ${paymentIdStr}, Monto: $${amount}, Vendedor: ${vendorName}.`);
-  
+
   // Obtener poema y metadatos antes para registrarlos en el historial de cobros
   let filename = 'default.txt';
   let content = '¡Muchas gracias por apoyar nuestro arte!';
@@ -3409,7 +3410,7 @@ async function processApprovedPayment(paymentId, amount, orderId = null) {
 async function startOrderPolling(orderId, maxAttempts = 100, intervalMs = 3000) {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   console.log(`[Polling] Iniciando consulta de estado para la orden ${orderId} (${maxAttempts} intentos, cada ${intervalMs}ms)...`);
-  
+
   let attempts = 0;
   const timer = setInterval(async () => {
     const caja = await getCajaState();
@@ -3425,7 +3426,7 @@ async function startOrderPolling(orderId, maxAttempts = 100, intervalMs = 3000) 
       clearInterval(timer);
       return;
     }
-    
+
     try {
       const response = await axios.get(
         `https://api.mercadopago.com/v1/orders/${orderId}`,
@@ -3435,20 +3436,20 @@ async function startOrderPolling(orderId, maxAttempts = 100, intervalMs = 3000) 
           }
         }
       );
-      
+
       const orderData = response.data;
       const status = orderData.status;
-      
+
       console.log(`[Polling] Orden ${orderId} (Intento ${attempts}/${maxAttempts}) -> Estado actual: ${status}`);
-      
+
       if (status === 'processed') {
         console.log(`[Polling] ¡Orden ${orderId} ha sido procesada correctamente (Pago Aprobado)!`);
         clearInterval(timer);
-        
+
         // Buscar el ID de pago y monto en la orden
         const payments = orderData.payments || [];
         const amount = orderData.amount || (payments.length > 0 ? payments[0].transaction_amount : 0);
-        
+
         if (payments.length > 0) {
           for (const payment of payments) {
             if (payment.status === 'approved' || payment.status === 'processed') {
@@ -3486,7 +3487,7 @@ app.post('/webhook', async (req, res) => {
   try {
     const { action, type, data, resource, id } = req.body;
     const topic = type || req.body.topic;
-    
+
     console.log(`[Webhook] Recibida notificación. Tipo/Tema: ${topic}, Acción: ${action}`);
     console.log(`[Webhook] Cuerpo completo de la notificación:`, JSON.stringify(req.body, null, 2));
 
@@ -3507,7 +3508,7 @@ app.post('/webhook', async (req, res) => {
       }
 
       console.log(`[Webhook] Consultando detalles del pago ${resourceId}...`);
-      
+
       try {
         const paymentResponse = await axios.get(
           `https://api.mercadopago.com/v1/payments/${resourceId}`,
@@ -3531,7 +3532,7 @@ app.post('/webhook', async (req, res) => {
       } catch (err) {
         console.error(`[Webhook] Error al consultar pago ${resourceId}:`, err.response?.data || err.message);
       }
-    } 
+    }
     // Caso 2: Notificación de tipo 'merchant_order'
     else if (topic === 'merchant_order') {
       if (!resourceId) {
@@ -3540,7 +3541,7 @@ app.post('/webhook', async (req, res) => {
       }
 
       console.log(`[Webhook] Consultando detalles de la orden comercial ${resourceId}...`);
-      
+
       try {
         const orderResponse = await axios.get(
           `https://api.mercadopago.com/merchant_orders/${resourceId}`,
@@ -3564,7 +3565,7 @@ app.post('/webhook', async (req, res) => {
       } catch (err) {
         console.error(`[Webhook] Error al consultar orden comercial ${resourceId}:`, err.response?.data || err.message);
       }
-    } 
+    }
     // Caso 3: Notificación de otro tipo no esperado
     else {
       console.log(`[Webhook] Notificación recibida para tema no configurado directamente (${topic}). Omitiendo.`);
@@ -3888,7 +3889,7 @@ app.post('/api/consejo/produccion/item', async (req, res) => {
     }
 
     const data = await getConsejoProduccion();
-    
+
     const categoryNamesMap = {
       'teatro': '🎭 Producción Teatral & Grupo',
       'podcast': '🎙️ Podcast El Pecado',
@@ -4020,7 +4021,7 @@ app.post('/api/escritores/register', async (req, res) => {
   };
 
   await saveAuthorRegistry(registry);
-    res.cookie('author_session', trimmedName, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: false, path: '/' });
+  res.cookie('author_session', trimmedName, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: false, path: '/' });
   return res.json({ success: true });
 });
 
@@ -4035,14 +4036,14 @@ async function calculateEconomicStats(registry) {
     if (fs.existsSync(STATS_FILE)) {
       stats = JSON.parse(await fs.promises.readFile(STATS_FILE, 'utf8'));
     }
-  } catch (e) {}
+  } catch (e) { }
 
   let payments = [];
   try {
     if (fs.existsSync(PAYMENT_HISTORY_FILE)) {
       payments = JSON.parse(await fs.promises.readFile(PAYMENT_HISTORY_FILE, 'utf8'));
     }
-  } catch (e) {}
+  } catch (e) { }
 
   // Reconciliación automática para asegurar que stats refleje los cobros reales registrados
   const historyCounts = {};
@@ -4059,7 +4060,7 @@ async function calculateEconomicStats(registry) {
 
   // 1. Recaudación bruta (tarjetas + efectivo registrados)
   const totalCollected = payments.reduce((acc, curr) => acc + (curr.amount || 0), 0);
-  
+
   // 2. Costos e Impuestos Totales
   const totalCostsAndTaxes = payments.reduce((acc, curr) => {
     return acc + (curr.mpFee || 0) + (curr.taxValue || 0) + (curr.paperCost || 0);
@@ -4088,7 +4089,7 @@ async function calculateEconomicStats(registry) {
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // Evaluar normativa argentina de derechos de autor (Ley 11.723: 70 años post mortem)
     const copyright = getCopyrightStatus(penName, authorInfo.deathYear, authorInfo.isAlive);
@@ -4108,7 +4109,7 @@ async function calculateEconomicStats(registry) {
   }
 
   const totalRFCDistributed = authorsList.reduce((acc, curr) => acc + curr.balanceRFC, 0);
-  
+
   // Margen operativo = Recaudación bruta - Costos/Tasas - Reservas
   const operatingSurplus = Math.max(0, totalCollected - totalCostsAndTaxes - totalReservesPool);
 
@@ -4145,7 +4146,7 @@ app.get('/api/escritores/dashboard-data', async (req, res) => {
     if (fs.existsSync(STATS_FILE)) {
       stats = JSON.parse(await fs.promises.readFile(STATS_FILE, 'utf8'));
     }
-  } catch (e) {}
+  } catch (e) { }
 
   let authorPoems = [];
   let totalPrints = 0;
@@ -4171,7 +4172,7 @@ app.get('/api/escritores/dashboard-data', async (req, res) => {
         }
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   const totalEarnedRFC = totalPrints * (authorData.pricePerUse || 1);
   const estimatedPesosVal = totalEarnedRFC * econ.rfcShareValue;
@@ -4203,7 +4204,7 @@ app.get('/api/admin/dashboard-data', async (req, res) => {
       const files = await fs.promises.readdir(poemsDir);
       totalPoems = files.filter(f => f.endsWith('.txt')).length;
     }
-  } catch (e) {}
+  } catch (e) { }
 
   const config = await getTaxesConfig();
   const cajaState = await getCajaState();
@@ -4230,7 +4231,7 @@ app.get('/api/admin/dashboard-data', async (req, res) => {
 
 app.post('/api/admin/save-config', async (req, res) => {
   const { mpFeePercent, mpFeeFixed, taxPercent, paperCostFixed, reservePercent } = req.body;
-  
+
   const config = {
     mpFeePercent: parseFloat(mpFeePercent) || 0,
     mpFeeFixed: parseFloat(mpFeeFixed) || 0,
@@ -4284,7 +4285,7 @@ app.post('/api/escritores/request-payout', async (req, res) => {
     if (fs.existsSync(STATS_FILE)) {
       stats = JSON.parse(await fs.promises.readFile(STATS_FILE, 'utf8'));
     }
-  } catch (e) {}
+  } catch (e) { }
 
   let totalPrints = 0;
   const poemsDir = path.join(__dirname, '../poemas');
@@ -4300,15 +4301,15 @@ app.post('/api/escritores/request-payout', async (req, res) => {
         }
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   const totalEarnedRFC = totalPrints * (authorData.pricePerUse || 1);
   const estimatedPesosVal = totalEarnedRFC * econ.rfcShareValue;
 
   const MIN_THRESHOLD_PESOS = 1000;
   if (estimatedPesosVal < MIN_THRESHOLD_PESOS) {
-    return res.status(400).json({ 
-      error: `Tu saldo acumulado actual ($${estimatedPesosVal.toFixed(2)} ARS) no alcanza el mínimo de $${MIN_THRESHOLD_PESOS} ARS requerido para solicitar cobro.` 
+    return res.status(400).json({
+      error: `Tu saldo acumulado actual ($${estimatedPesosVal.toFixed(2)} ARS) no alcanza el mínimo de $${MIN_THRESHOLD_PESOS} ARS requerido para solicitar cobro.`
     });
   }
 
@@ -4318,7 +4319,7 @@ app.post('/api/escritores/request-payout', async (req, res) => {
     if (fs.existsSync(PAYOUT_REQUESTS_FILE)) {
       payoutRequests = JSON.parse(await fs.promises.readFile(PAYOUT_REQUESTS_FILE, 'utf8'));
     }
-  } catch (e) {}
+  } catch (e) { }
 
   const requestObj = {
     requestId: `payout_${Date.now()}`,
@@ -4344,8 +4345,8 @@ app.post('/api/escritores/request-payout', async (req, res) => {
     status: 'Pendiente de Pago'
   });
 
-  return res.json({ 
-    success: true, 
+  return res.json({
+    success: true,
     message: `¡Solicitud de cobro por $${estimatedPesosVal.toFixed(2)} ARS enviada con éxito! Ha sido registrada en Google Sheets para liquidación.`,
     sheetSaved
   });
@@ -5523,7 +5524,7 @@ app.listen(PORT, () => {
   console.log(`====================================================`);
   console.log(`🚀 Servidor ejecutándose en http://localhost:${PORT}`);
   console.log(`====================================================`);
-  
+
   getCajaState().then(caja => {
     if (caja.status === 'open') {
       console.log('[Inicio] Estado inicial de caja: ABIERTA. Iniciando Keep-Alive...');
