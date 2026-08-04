@@ -1252,7 +1252,10 @@ app.get('/', async (req, res) => {
       <div id="toast" class="toast">¡Procesando!</div>
 
       <script>
-        document.getElementById('webhookUrl').textContent = window.location.origin + '/webhook';
+        const whElem = document.getElementById('webhookUrl');
+        if (whElem) {
+          whElem.textContent = window.location.origin + '/webhook';
+        }
 
         const toast = document.getElementById('toast');
         function showToast(message) {
