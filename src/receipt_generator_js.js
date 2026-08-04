@@ -70,12 +70,10 @@ export async function generateThermalReceiptBase64JS(poemText, customLogoPath = 
 
     const headerTitle = '🍎 UN POEMA PARA TI 🍎';
     const footerLines = [
-      '* * * * *',
-      'Gracias por tu colaboración',
-      'y por apoyar el arte.',
+      'Gracias por apoyar el arte.',
       '--------------------------------',
-      'Encuentra más información en:',
-      'elpecado.ar'
+      'Encuentra mas info en:',
+      'elpecado.ar',
     ];
 
     const paddingTop = 12;
@@ -88,13 +86,13 @@ export async function generateThermalReceiptBase64JS(poemText, customLogoPath = 
     const lineHeightFooter = 20;
 
     const hPoem = wrappedLines.reduce((acc, line) => acc + (line === '' ? 10 : lineHeightBody), 0);
-    const hFooter = footerLines.reduce((acc, line) => acc + (line === 'elpecado.ar' ? 28 : lineHeightFooter), 0);
+    const hFooter = footerLines.reduce((acc, line) => acc + (line.includes('elpecado.ar') ? 24 : lineHeightFooter), 0);
 
-    const totalHeight = paddingTop + 
-      (logoImg ? targetLogoHeight + paddingLogoTitle : 0) + 
-      26 + paddingTitlePoem + 
-      hPoem + 
-      paddingPoemFooter + hFooter + 
+    const totalHeight = paddingTop +
+      (logoImg ? targetLogoHeight + paddingLogoTitle : 0) +
+      26 + paddingTitlePoem +
+      hPoem +
+      paddingPoemFooter + hFooter +
       paddingBottom;
 
     const canvas = createCanvas(RECEIPT_WIDTH, totalHeight);
@@ -137,15 +135,13 @@ export async function generateThermalReceiptBase64JS(poemText, customLogoPath = 
     // 4. Pie de Página
     for (let i = 0; i < footerLines.length; i++) {
       const line = footerLines[i];
-      if (line === 'elpecado.ar') {
-        ctx.font = 'bold 18px sans-serif';
-      } else if (line === 'Encuentra más información en:') {
-        ctx.font = '13px sans-serif';
+      if (line.includes('elpecado.ar')) {
+        ctx.font = 'bold 14px sans-serif';
       } else {
         ctx.font = '14px sans-serif';
       }
       ctx.fillText(line, RECEIPT_WIDTH / 2, currY);
-      currY += (line === 'elpecado.ar' ? 28 : lineHeightFooter);
+      currY += (line.includes('elpecado.ar') ? 24 : lineHeightFooter);
     }
 
     // 5. Binarizar a 1-bit monocromo para reducir el tamaño del Base64 de ~120KB a ~12KB
