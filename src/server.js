@@ -144,10 +144,9 @@ async function formatPoemForPoint(poem) {
   */
   content += `{center}{b}🍎 UN POEMA PARA TI 🍎{/b}{/center}{br}`;
   content += formattedLines.join('{br}');
-  content += `{center}--------------------------{br}`;
-  content += `{center}{s}Gracias por apoyar el arte.{/s}{br}`;
-  content += `{center}Encuentra mas info en:{br}{/s}`;
-  content += `{center}{s}elpecado.ar{/s}{br}{br}`;
+  content += `{br}{center}{s}Gracias por apoyar el arte.{/s}{/center}`;
+  content += `{center}{s}Encuentra mas info en:{/s}{/center}{br}`;
+  content += `{center}{s}elpecado.ar{/s}{/center}{br}{br}`;
 
 
   // La API requiere al menos 100 caracteres.
