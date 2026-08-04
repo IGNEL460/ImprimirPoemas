@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import axios from 'axios';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -212,6 +213,12 @@ export async function fetchAuditHistoryFromSheet() {
         timestamp: row[0] || new Date().toISOString()
       };
     });
+  } catch (error) {
+    console.error('[GoogleSheets] Error al leer historial desde Google Sheets:', error.message);
+    return null;
+  }
+}
+
 /**
  * Registra una solicitud de cobro/liquidación de un autor en Google Sheets.
  * @param {Object} data 
