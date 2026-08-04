@@ -93,10 +93,12 @@ def generate_thermal_receipt_base64(poem_text, logo_path=None):
 
     header_title = '🍎 UN POEMA PARA TI 🍎'
     footer_lines = [
-        'Gracias por apoyar el arte.',
+        '* * * * *',
+        'Gracias por tu colaboración',
+        'y por apoyar el arte.',
         '--------------------------------',
         'Encuentra más información en:',
-        'www.elpecado.ar'
+        'elpecado.ar'
     ]
 
     padding_top = 10
@@ -109,7 +111,7 @@ def generate_thermal_receipt_base64(poem_text, logo_path=None):
     line_height_footer = 20
 
     h_poem = sum(line_height_body if l != '' else 10 for l in wrapped_lines)
-    h_footer = sum(28 if l == 'www.elpecado.ar' else line_height_footer for l in footer_lines)
+    h_footer = sum(28 if l == 'elpecado.ar' else line_height_footer for l in footer_lines)
 
     total_height = (padding_top + target_logo_height + 
                     padding_between_logo_title + 26 + 
@@ -147,7 +149,7 @@ def generate_thermal_receipt_base64(poem_text, logo_path=None):
 
     # 7. Draw Footer Lines
     for i, line in enumerate(footer_lines):
-        if line == 'www.elpecado.ar':
+        if line == 'elpecado.ar':
             f = font_url
             lh = 28
         elif line == 'Encuentra más información en:':

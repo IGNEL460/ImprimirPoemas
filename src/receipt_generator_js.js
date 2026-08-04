@@ -88,7 +88,7 @@ export async function generateThermalReceiptBase64JS(poemText, customLogoPath = 
     const lineHeightFooter = 20;
 
     const hPoem = wrappedLines.reduce((acc, line) => acc + (line === '' ? 10 : lineHeightBody), 0);
-    const hFooter = footerLines.reduce((acc, line) => acc + (line === 'elpecado.ar' ? 24 : lineHeightFooter), 0);
+    const hFooter = footerLines.reduce((acc, line) => acc + (line === 'elpecado.ar' ? 28 : lineHeightFooter), 0);
 
     const totalHeight = paddingTop + 
       (logoImg ? targetLogoHeight + paddingLogoTitle : 0) + 
@@ -145,7 +145,7 @@ export async function generateThermalReceiptBase64JS(poemText, customLogoPath = 
         ctx.font = '14px sans-serif';
       }
       ctx.fillText(line, RECEIPT_WIDTH / 2, currY);
-      currY += (line === 'elpecado.ar' ? 24 : lineHeightFooter);
+      currY += (line === 'elpecado.ar' ? 28 : lineHeightFooter);
     }
 
     // 5. Binarizar a 1-bit monocromo para reducir el tamaño del Base64 de ~120KB a ~12KB
