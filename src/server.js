@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 
 const execFileAsync = promisify(execFile);
 import { getRandomPoem, parsePoemMetadata, getAllPoems } from './poems.js';
-import { appendAuditRow, getSheetsStatus, fetchAuditHistoryFromSheet, appendPayoutRequestRow } from './googleSheetsService.js';
+import { appendAuditRow, getSheetsStatus, fetchAuditHistoryFromSheet, appendPayoutRequestRow, appendLivingAuthorPrintRow } from './googleSheetsService.js';
 import { generateThermalReceiptBase64JS } from './receipt_generator_js.js';
 
 // Cargar variables de entorno
@@ -3319,6 +3319,21 @@ async function recordPayment(paymentId, amount, filename, author, title, vendor 
       });
       if (sheetSaved) {
         console.log(`[GoogleSheets] Registro guardado con éxito en la planilla para el pago ${paymentId}.`);
+      }
+
+      // Si el autor está clasificado como Autor Vivo, registrar también en la pestaña 'Autores_Vivos'
+      if (copyrightInfo.isAlive) {
+        await appendLivingAuthorPrintRow({
+          paymentId: paymentId.toString(),
+          amount: grossAmount,
+          filename,
+          author,
+          title,
+          vendorName: vendor || 'Sin Evento',
+          copyrightStatus,
+          netAmount,
+          reserveAllocated
+        });
       }
     } catch (sheetErr) {
       console.error('[GoogleSheets] Error en segundo plano:', sheetErr.message);

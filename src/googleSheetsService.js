@@ -291,4 +291,81 @@ export async function appendPayoutRequestRow(data) {
   }
 }
 
+/**
+ * Registra en Google Sheets una impresión específicamente para Autores Vivos (Pestaña 'Autores_Vivos').
+ * @param {Object} data 
+ */
+export async function appendLivingAuthorPrintRow(data) {
+  const currentSheetId = process.env.GOOGLE_SHEET_ID || spreadsheetId;
+  const scriptUrl = process.env.GOOGLE_SCRIPT_URL || '';
+
+  const timestamp = new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+  const {
+    paymentId = 'Efectivo',
+    author = 'Autor Vivo',
+    title = 'Sin Título',
+    filename = '',
+    vendorName = 'Sin Evento',
+    amount = 0,
+    netAmount = 0,
+    reserveAllocated = 0,
+    copyrightStatus = 'Autor Vivo (Con Derechos)'
+  } = data;
+
+  const row = [
+    timestamp,
+    paymentId,
+    vendorName,
+    author,
+    title,
+    filename,
+    `$${parseFloat(amount).toFixed(2)}`,
+    `$${parseFloat(netAmount).toFixed(2)}`,
+    `$${parseFloat(reserveAllocated).toFixed(2)}`,
+    copyrightStatus
+  ];
+
+  // Opción 1: Enviar mediante Web App URL de Google Apps Script (Método Sencillo)
+  if (scriptUrl) {
+    try {
+      const payload = JSON.stringify({ row, sheetTab: 'Autores_Vivos', spreadsheetId: currentSheetId });
+      await axios.post(scriptUrl, payload, {
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        maxRedirects: 5
+      });
+      console.log(`[GoogleSheets] Registro de autor vivo (${author}) enviado por Apps Script URL.`);
+      return true;
+    } catch (err) {
+      console.error('[GoogleSheets] Error al enviar registro de autor vivo vía Apps Script:', err.message);
+    }
+  }
+
+  // Opción 2: Enviar mediante Google Sheets API (Service Account)
+  if (!currentSheetId) return false;
+
+  try {
+    const sheets = await getSheetsClient();
+    if (!sheets) return false;
+
+    try {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: currentSheetId,
+        range: 'Autores_Vivos!A:J',
+        valueInputOption: 'USER_ENTERED',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: [row] }
+      });
+      console.log(`[GoogleSheets] Registro de impresión para autor vivo (${author}) agregado exitosamente en pestaña 'Autores_Vivos'.`);
+      return true;
+    } catch (errTab) {
+      console.warn(`[GoogleSheets] Nota: Pestaña 'Autores_Vivos' no encontrada aún en la planilla. Los datos quedan resguardados en 'Auditoria'.`);
+      return false;
+    }
+  } catch (error) {
+    console.error('[GoogleSheets] Error al registrar impresión de autor vivo en Google Sheets:', error.message);
+    return false;
+  }
+}
+
+
 
