@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let sheetsClient = null;
-let spreadsheetId = process.env.GOOGLE_SHEET_ID || '1OYkE2Yr-LGu9NdapmEQMIkRdPVmM9x8Cxn6fFSgQ68Q';
+let spreadsheetId = process.env.GOOGLE_SHEET_ID || '1ieusxW8BBrR4g2awDvjeVPzVncv8TychDPlBh7jnahw';
 
 /**
  * Inicializa el cliente de Google Sheets mediante Service Account (desde .env o credentials.json).
@@ -366,6 +366,49 @@ export async function appendLivingAuthorPrintRow(data) {
     return false;
   }
 }
+
+/**
+ * Lee el registro de impresiones de poemas de artistas vivos desde la pestaña 'Autores_Vivos'.
+ * @returns {Promise<Array<Object>|null>}
+ */
+export async function fetchLivingAuthorPrintsFromSheet() {
+  const currentSheetId = process.env.GOOGLE_SHEET_ID || spreadsheetId;
+  if (!currentSheetId) return null;
+
+  try {
+    const sheets = await getSheetsClient();
+    if (!sheets) return null;
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: currentSheetId,
+      range: 'Autores_Vivos!A2:J2000',
+    });
+
+    const rows = response.data.values || [];
+    if (rows.length === 0) return [];
+
+    const parseMoney = (val) => parseFloat(String(val || '0').replace('$', '').replace(',', '').trim()) || 0;
+
+    return rows.map((row, index) => {
+      return {
+        timestamp: row[0] || new Date().toISOString(),
+        paymentId: row[1] || `living_row_${index + 1}`,
+        vendor: row[2] || 'Sin Evento',
+        author: row[3] || 'Autor Vivo',
+        title: row[4] || 'Sin Título',
+        filename: row[5] || '',
+        amount: parseMoney(row[6]),
+        netAmount: parseMoney(row[7]),
+        reserveAllocated: parseMoney(row[8]),
+        copyrightStatus: row[9] || 'Autor Vivo (Con Derechos)'
+      };
+    });
+  } catch (error) {
+    console.error('[GoogleSheets] Error al leer impresiones de autores vivos desde Google Sheets:', error.message);
+    return null;
+  }
+}
+
 
 
 
