@@ -56,6 +56,36 @@ function validateMpAccessToken(token) {
   return { valid: true };
 }
 
+// Función auxiliar para extraer el mensaje de error detallado de la API de Mercado Pago
+function extractMpErrorMessage(error) {
+  if (!error) return 'Error desconocido';
+  if (typeof error === 'string') return error;
+
+  const resData = error.response?.data;
+  if (resData) {
+    if (Array.isArray(resData.cause) && resData.cause.length > 0) {
+      const causes = resData.cause.map(c => c.description || c.code || JSON.stringify(c)).join(' | ');
+      return `Causa Mercado Pago: ${causes}`;
+    }
+    if (Array.isArray(resData.error_messages) && resData.error_messages.length > 0) {
+      return resData.error_messages.join(', ');
+    }
+    if (resData.message) return resData.message;
+    if (resData.error) return resData.error;
+    if (resData.status_detail) return `Detalle de estado: ${resData.status_detail}`;
+  }
+  return error.message || 'Error de red o comunicación con Mercado Pago';
+}
+
+// Función auxiliar para sanitizar external_reference según especificación Mercado Pago SmartApps/Point
+// Máximo 64 caracteres, solo alfanuméricos, guiones (-) y guiones bajos (_)
+function sanitizeExternalReference(ref) {
+  if (!ref) return `payment_${Date.now()}`;
+  const sanitized = String(ref).replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 64);
+  return sanitized || `payment_${Date.now()}`;
+}
+
+
 // Función auxiliar para realizar ajuste de línea (Word Wrap) sin cortar palabras
 function wrapText(text, limit = 30) {
   const words = text.split(' ');
@@ -2963,7 +2993,8 @@ app.post('/create-order', async (req, res) => {
   lastActiveVendor = vendorName; // Guardar el fallback para webhooks asíncronos
 
   const idempotencyKey = crypto.randomUUID();
-  const externalReference = `payment_${Date.now()}`;
+  const rawRef = req.body.externalReference || `payment_${Date.now()}`;
+  const externalReference = sanitizeExternalReference(rawRef);
 
   const payload = {
     external_reference: externalReference,
@@ -2983,7 +3014,7 @@ app.post('/create-order', async (req, res) => {
   };
 
   try {
-    console.log(`[Cobro] Iniciando cobro de $${numericAmount} en terminal: ${terminalId} (Vendedor: ${vendorName})...`);
+    console.log(`[Cobro] Iniciando cobro de $${numericAmount} (Ref: ${externalReference}) en terminal: ${terminalId} (Vendedor: ${vendorName})...`);
     
     let orderData = null;
     let orderId = null;
@@ -3004,13 +3035,15 @@ app.post('/create-order', async (req, res) => {
       orderData = response.data;
       orderId = orderData?.id;
     } catch (v1Err) {
-      console.warn('[Cobro] v1/orders no disponible o rechazado. Intentando API de Integración Point Directa...', v1Err.response?.data || v1Err.message);
+      console.warn('[Cobro] v1/orders no disponible o rechazado. Detalles:', extractMpErrorMessage(v1Err));
+      console.warn('[Cobro] Intentando API de Integración Point Directa (payment-intents)...');
       
       // Intento 2 Fallback: Point Integration API (payment-intents)
+      // La descripción incluye la referencia única para permitir consulta de estado con getPaymentStatus del SDK
       const fallbackUrl = `https://api.mercadopago.com/point/integration-api/devices/${encodeURIComponent(terminalId)}/payment-intents`;
       const fallbackPayload = {
         amount: Math.round(numericAmount),
-        description: `Poemas El Pecado (${vendorName})`,
+        description: `Poemas El Pecado (${vendorName}) - ${externalReference}`,
         payment_mode: 'pdv'
       };
 
@@ -3037,8 +3070,8 @@ app.post('/create-order', async (req, res) => {
 
     return res.status(200).json({ success: true, message: 'Orden de cobro enviada a la terminal', data: orderData });
   } catch (error) {
-    console.error('[Cobro] Error al crear la orden de cobro:', JSON.stringify(error.response?.data, null, 2) || error.message);
-    const apiError = error.response?.data?.message || (error.response?.data?.error_messages ? error.response.data.error_messages.join(', ') : null) || error.message;
+    const apiError = extractMpErrorMessage(error);
+    console.error('[Cobro] Error al crear la orden de cobro:', apiError);
     return res.status(500).json({ error: apiError });
   }
 });
@@ -3509,6 +3542,8 @@ async function startOrderPolling(orderId, maxAttempts = 100, intervalMs = 3000) 
 
       console.log(`[Polling] Orden ${orderId} (Intento ${attempts}/${maxAttempts}) -> Estado actual: ${status}`);
 
+      const terminalNegativeStatuses = ['failed', 'cancelled', 'rejected', 'expired', 'charged_back', 'refunded'];
+
       if (status === 'processed') {
         console.log(`[Polling] ¡Orden ${orderId} ha sido procesada correctamente (Pago Aprobado)!`);
         clearInterval(timer);
@@ -3530,12 +3565,12 @@ async function startOrderPolling(orderId, maxAttempts = 100, intervalMs = 3000) 
           console.log(`[Polling] Sin pagos explícitos en la respuesta. Utilizando ID virtual: ${virtualPaymentId}`);
           await processApprovedPayment(virtualPaymentId, amount, orderId);
         }
-      } else if (status === 'failed' || status === 'cancelled') {
-        console.log(`[Polling] La orden ${orderId} terminó con estado fallido o cancelado (${status}). Deteniendo polling.`);
+      } else if (terminalNegativeStatuses.includes(status)) {
+        console.log(`[Polling] La orden ${orderId} terminó con estado terminal ("${status}"). Deteniendo polling.`);
         clearInterval(timer);
       }
     } catch (err) {
-      console.error(`[Polling] Error consultando estado de orden ${orderId}:`, err.response?.data || err.message);
+      console.error(`[Polling] Error consultando estado de orden ${orderId}:`, extractMpErrorMessage(err));
       // No detenemos el polling en caso de un error temporal de red (timeout, etc.)
     }
   }, intervalMs);
@@ -3597,7 +3632,7 @@ app.post('/webhook', async (req, res) => {
           await processApprovedPayment(resourceId, paymentData.transaction_amount, orderId);
         }
       } catch (err) {
-        console.error(`[Webhook] Error al consultar pago ${resourceId}:`, err.response?.data || err.message);
+        console.error(`[Webhook] Error al consultar pago ${resourceId}:`, extractMpErrorMessage(err));
       }
     }
     // Caso 2: Notificación de tipo 'merchant_order'
@@ -3630,7 +3665,7 @@ app.post('/webhook', async (req, res) => {
           }
         }
       } catch (err) {
-        console.error(`[Webhook] Error al consultar orden comercial ${resourceId}:`, err.response?.data || err.message);
+        console.error(`[Webhook] Error al consultar orden comercial ${resourceId}:`, extractMpErrorMessage(err));
       }
     }
     // Caso 3: Notificación de otro tipo no esperado
