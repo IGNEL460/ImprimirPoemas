@@ -41,6 +41,21 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Función auxiliar para validar credenciales de Mercado Pago Developers
+function validateMpAccessToken(token) {
+  if (!token || token.includes('tu_access_token')) {
+    return { valid: false, reason: 'Mercado Pago Access Token no configurado en el archivo .env' };
+  }
+  const cleanToken = token.trim();
+  if (!cleanToken.startsWith('APP_USR-') && !cleanToken.startsWith('TEST-')) {
+    return {
+      valid: false,
+      reason: `El MP_ACCESS_TOKEN configurado ("${cleanToken.substring(0, 10)}...") no parece ser un Access Token de Mercado Pago Developers (debe comenzar con 'APP_USR-' o 'TEST-'). Se detectó un Número de Serie en su lugar.`
+    };
+  }
+  return { valid: true };
+}
+
 // Función auxiliar para realizar ajuste de línea (Word Wrap) sin cortar palabras
 function wrapText(text, limit = 30) {
   const words = text.split(' ');
@@ -393,7 +408,8 @@ async function printUnifiedReceiptOnTerminal(poemText) {
 // Dashboard Web Premium
 app.get('/', async (req, res) => {
   const accessToken = process.env.MP_ACCESS_TOKEN;
-  const hasToken = accessToken && !accessToken.includes('tu_access_token');
+  const tokenValidation = validateMpAccessToken(accessToken);
+  const hasToken = tokenValidation.valid;
   const hasTerminal = process.env.MP_TERMINAL_ID && !process.env.MP_TERMINAL_ID.includes('tu_terminal_id');
 
   const reqProto = req.headers['x-forwarded-proto'] || req.protocol;
@@ -415,6 +431,8 @@ app.get('/', async (req, res) => {
     } catch (err) {
       terminalError = err.response?.data?.message || err.message;
     }
+  } else if (accessToken) {
+    terminalError = tokenValidation.reason;
   }
 
   const terminalsHtml = terminals.map(term => {
@@ -1384,10 +1402,11 @@ app.get('/', async (req, res) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ amount, notificationUrl: window.location.origin + '/webhook' })
               });
+              const data = await res.json().catch(() => ({}));
               if (res.ok) showToast('¡Orden de $' + amount + ' enviada al Point!');
-              else showToast('Error enviando cobro.');
+              else showToast('⚠️ Error: ' + (data.error || 'No se pudo enviar cobro.'));
             } catch (err) {
-              showToast('Error de red.');
+              showToast('❌ Error de red: ' + err.message);
             } finally {
               btnCharge.disabled = false;
               btnCharge.textContent = '💳 Enviar Cobro a Point';
@@ -1403,12 +1422,15 @@ app.get('/', async (req, res) => {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ terminalId, mode })
             });
+            const data = await res.json().catch(() => ({}));
             if (res.ok) {
               showToast('¡Modo cambiado con éxito! Recargando...');
               setTimeout(() => window.location.reload(), 2000);
+            } else {
+              showToast('⚠️ Error: ' + (data.error || 'No se pudo cambiar el modo.'));
             }
           } catch(e) {
-            showToast('Error.');
+            showToast('❌ Error: ' + e.message);
           }
         }
 
@@ -2922,11 +2944,12 @@ app.post('/create-order', async (req, res) => {
 
   const { amount, notificationUrl } = req.body;
   const accessToken = process.env.MP_ACCESS_TOKEN;
-  const terminalId = process.env.MP_TERMINAL_ID;
-
-  if (!accessToken || accessToken.includes('tu_access_token')) {
-    return res.status(400).json({ error: 'Mercado Pago Access Token no configurado en el archivo .env' });
+  const tokenValidation = validateMpAccessToken(accessToken);
+  if (!tokenValidation.valid) {
+    return res.status(400).json({ error: tokenValidation.reason });
   }
+
+  const terminalId = process.env.MP_TERMINAL_ID;
   if (!terminalId || terminalId.includes('tu_terminal_id')) {
     return res.status(400).json({ error: 'Mercado Pago Terminal ID no configurado en el archivo .env' });
   }
@@ -2961,20 +2984,50 @@ app.post('/create-order', async (req, res) => {
 
   try {
     console.log(`[Cobro] Iniciando cobro de $${numericAmount} en terminal: ${terminalId} (Vendedor: ${vendorName})...`);
-    const response = await axios.post(
-      'https://api.mercadopago.com/v1/orders',
-      payload,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-          'X-Idempotency-Key': idempotencyKey
-        }
-      }
-    );
+    
+    let orderData = null;
+    let orderId = null;
 
-    // Obtener el ID de la orden creada para iniciar polling en segundo plano
-    const orderId = response.data.id;
+    try {
+      // Intento 1: API de Órdenes v1/orders
+      const response = await axios.post(
+        'https://api.mercadopago.com/v1/orders',
+        payload,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'X-Idempotency-Key': idempotencyKey
+          }
+        }
+      );
+      orderData = response.data;
+      orderId = orderData?.id;
+    } catch (v1Err) {
+      console.warn('[Cobro] v1/orders no disponible o rechazado. Intentando API de Integración Point Directa...', v1Err.response?.data || v1Err.message);
+      
+      // Intento 2 Fallback: Point Integration API (payment-intents)
+      const fallbackUrl = `https://api.mercadopago.com/point/integration-api/devices/${encodeURIComponent(terminalId)}/payment-intents`;
+      const fallbackPayload = {
+        amount: Math.round(numericAmount),
+        description: `Poemas El Pecado (${vendorName})`,
+        payment_mode: 'pdv'
+      };
+
+      const fallbackResponse = await axios.post(
+        fallbackUrl,
+        fallbackPayload,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          }
+        }
+      );
+      orderData = fallbackResponse.data;
+      orderId = orderData?.id;
+    }
+
     if (orderId) {
       activeOrdersVendors[orderId] = vendorName; // Mapear el ID de orden al vendedor/evento creador
       startOrderPolling(orderId);
@@ -2982,7 +3035,7 @@ app.post('/create-order', async (req, res) => {
       console.warn('[Cobro] La API de Mercado Pago no devolvió un ID de orden. No se iniciará polling.');
     }
 
-    return res.status(200).json({ success: true, message: 'Orden de cobro enviada a la terminal', data: response.data });
+    return res.status(200).json({ success: true, message: 'Orden de cobro enviada a la terminal', data: orderData });
   } catch (error) {
     console.error('[Cobro] Error al crear la orden de cobro:', JSON.stringify(error.response?.data, null, 2) || error.message);
     const apiError = error.response?.data?.message || (error.response?.data?.error_messages ? error.response.data.error_messages.join(', ') : null) || error.message;
@@ -2994,9 +3047,9 @@ app.post('/create-order', async (req, res) => {
 app.post('/change-terminal-mode', async (req, res) => {
   const { terminalId, mode } = req.body;
   const accessToken = process.env.MP_ACCESS_TOKEN;
-
-  if (!accessToken || accessToken.includes('tu_access_token')) {
-    return res.status(400).json({ error: 'Mercado Pago Access Token no configurado en el archivo .env' });
+  const tokenValidation = validateMpAccessToken(accessToken);
+  if (!tokenValidation.valid) {
+    return res.status(400).json({ error: tokenValidation.reason });
   }
 
   if (!terminalId || !mode) {
