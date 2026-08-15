@@ -2996,6 +2996,9 @@ app.post('/create-order', async (req, res) => {
   const rawRef = req.body.externalReference || `payment_${Date.now()}`;
   const externalReference = sanitizeExternalReference(rawRef);
 
+  const posId = process.env.MP_POS_ID || req.body.posId;
+  const storeId = process.env.MP_STORE_ID || req.body.storeId;
+
   const payload = {
     external_reference: externalReference,
     type: 'point',
@@ -3012,6 +3015,14 @@ app.post('/create-order', async (req, res) => {
       ]
     }
   };
+
+  if (posId) {
+    payload.pos_id = posId;
+  }
+  if (storeId) {
+    payload.store_id = storeId;
+  }
+
 
   try {
     console.log(`[Cobro] Iniciando cobro de $${numericAmount} (Ref: ${externalReference}) en terminal: ${terminalId} (Vendedor: ${vendorName})...`);
