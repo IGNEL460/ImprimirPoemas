@@ -291,4 +291,120 @@ export async function appendPayoutRequestRow(data) {
   }
 }
 
+/**
+ * Registra una fila de impresión de AUTOR VIVO en la hoja de cálculo de Google Sheets.
+ * Diseñado para ser 100% no bloqueante (Fire-and-forget).
+ * @param {Object} data 
+ */
+export async function appendLivingAuthorPrintRow(data) {
+  const currentSheetId = process.env.GOOGLE_SHEET_ID || spreadsheetId;
+  const scriptUrl = process.env.GOOGLE_SCRIPT_URL || '';
 
+  const timestamp = new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+  const {
+    paymentId = 'Efectivo',
+    amount = 0,
+    filename = '',
+    author = 'Autor Vivo',
+    title = 'Sin Título',
+    vendorName = 'Sin Evento',
+    copyrightStatus = 'Autor Vivo (Con Derechos)',
+    netAmount = 0,
+    reserveAllocated = 0,
+    totalPrints = 1
+  } = data;
+
+  const row = [
+    timestamp,
+    String(paymentId),
+    author,
+    title,
+    filename,
+    vendorName,
+    `$${parseFloat(amount).toFixed(2)}`,
+    `$${parseFloat(netAmount).toFixed(2)}`,
+    `$${parseFloat(reserveAllocated).toFixed(2)}`,
+    Number(totalPrints)
+  ];
+
+  // Opción 1: Enviar mediante Web App URL de Google Apps Script (Recomendado)
+  if (scriptUrl) {
+    try {
+      const payload = JSON.stringify({
+        sheetName: 'Autores_Vivos',
+        row,
+        spreadsheetId: currentSheetId,
+        data: {
+          timestamp,
+          paymentId: String(paymentId),
+          author,
+          title,
+          filename,
+          vendorName,
+          amount,
+          netAmount,
+          reserveAllocated,
+          totalPrints
+        }
+      });
+      await axios.post(scriptUrl, payload, {
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        timeout: 10000,
+        maxRedirects: 5
+      });
+      console.log(`[GoogleSheets] Impresión de autor vivo '${author}' enviada por Apps Script para pago ${paymentId}.`);
+      return true;
+    } catch (err) {
+      console.warn('[GoogleSheets] Error no bloqueante al enviar autor vivo vía Apps Script:', err.response?.data || err.message);
+      return false;
+    }
+  }
+
+  // Opción 2: Enviar mediante Google Sheets API (Service Account)
+  if (!currentSheetId) {
+    return false;
+  }
+
+  try {
+    const sheets = await getSheetsClient();
+    if (!sheets) return false;
+
+    try {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: currentSheetId,
+        range: 'Autores_Vivos!A:J',
+        valueInputOption: 'USER_ENTERED',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: [row] }
+      });
+      console.log(`[GoogleSheets] Fila registrada en pestaña 'Autores_Vivos' para autor ${author}.`);
+      return true;
+    } catch (tabErr) {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: currentSheetId,
+        range: 'Auditoria!A:L',
+        valueInputOption: 'USER_ENTERED',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: {
+          values: [[
+            timestamp,
+            paymentId,
+            vendorName,
+            `$${parseFloat(amount).toFixed(2)}`,
+            title,
+            author,
+            `[AUTOR VIVO] ${copyrightStatus}`,
+            '$0.00', '$0.00', '$0.00',
+            `$${parseFloat(netAmount).toFixed(2)}`,
+            `$${parseFloat(reserveAllocated).toFixed(2)}`
+          ]]
+        }
+      });
+      console.log(`[GoogleSheets] Fila de autor vivo registrada en 'Auditoria' para ${author}.`);
+      return true;
+    }
+  } catch (error) {
+    console.warn('[GoogleSheets] Error no bloqueante al registrar autor vivo en Google Sheets:', error.message);
+    return false;
+  }
+}

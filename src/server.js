@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 
 const execFileAsync = promisify(execFile);
 import { getRandomPoem, parsePoemMetadata, getAllPoems } from './poems.js';
-import { appendAuditRow, getSheetsStatus, fetchAuditHistoryFromSheet, appendPayoutRequestRow } from './googleSheetsService.js';
+import { appendAuditRow, getSheetsStatus, fetchAuditHistoryFromSheet, appendPayoutRequestRow, appendLivingAuthorPrintRow } from './googleSheetsService.js';
 import { generateThermalReceiptBase64JS } from './receipt_generator_js.js';
 
 // Cargar variables de entorno
@@ -3116,6 +3116,7 @@ async function incrementPoemPrint(filename) {
   } catch (err) {
     console.error('[Estadísticas] Error al guardar estadísticas:', err);
   }
+  return stats[filename];
 }
 
 const KNOWN_AUTHORS_DEATH_YEARS = {
@@ -3299,11 +3300,29 @@ async function recordPayment(paymentId, amount, filename, author, title, vendor 
     console.log(`[Historial] Pago ${paymentId} ($${grossAmount}) registrado correctamente (Vendedor: ${vendor}, Neto: $${netAmount}, Reserva RFC: $${reserveAllocated}).`);
 
     // Incrementar conteo en estadísticas de poemas de forma infalible
-    await incrementPoemPrint(filename);
+    const totalPrints = await incrementPoemPrint(filename);
 
-    // Sincronizar en segundo plano con Google Sheets API para auditoría perpetua en la nube
+    // Registro específico para Autores Vivos en Google Sheets (Fire-and-forget, completamente no bloqueante)
+    if (copyrightInfo.isAlive) {
+      appendLivingAuthorPrintRow({
+        paymentId: paymentId.toString(),
+        amount: grossAmount,
+        filename,
+        author,
+        title,
+        vendorName: vendor || 'Sin Evento',
+        copyrightStatus,
+        netAmount,
+        reserveAllocated,
+        totalPrints
+      }).catch(err => {
+        console.warn('[GoogleSheets] Error no bloqueante al registrar autor vivo:', err.message);
+      });
+    }
+
+    // Sincronizar auditoría general en segundo plano si está configurada
     try {
-      const sheetSaved = await appendAuditRow({
+      appendAuditRow({
         paymentId: paymentId.toString(),
         amount: grossAmount,
         filename,
@@ -3316,10 +3335,9 @@ async function recordPayment(paymentId, amount, filename, author, title, vendor 
         paperCost,
         netAmount,
         reserveAllocated
+      }).catch(err => {
+        console.warn('[GoogleSheets] Error no bloqueante en auditoría general:', err.message);
       });
-      if (sheetSaved) {
-        console.log(`[GoogleSheets] Registro guardado con éxito en la planilla para el pago ${paymentId}.`);
-      }
     } catch (sheetErr) {
       console.error('[GoogleSheets] Error en segundo plano:', sheetErr.message);
     }
