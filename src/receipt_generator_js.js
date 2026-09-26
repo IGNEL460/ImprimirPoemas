@@ -72,8 +72,11 @@ export async function generateThermalReceiptBase64JS(poemText, customLogoPath = 
     const footerLines = [
       'Gracias por apoyar el arte.',
       'Mas info en:',
-      '',
       'elpecado.ar',
+      '',
+      'Concurso EL EDICTO:',
+      'Adivina la Palabra',
+      'elpecado.ar/edicto'
     ];
 
     const paddingTop = 12;

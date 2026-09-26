@@ -96,7 +96,11 @@ def generate_thermal_receipt_base64(poem_text, logo_path=None):
         'Gracias por apoyar el arte.',
         '--------------------------------',
         'Encuentra mas info en:',
-        'elpecado.ar'
+        'elpecado.ar',
+        '--------------------------------',
+        'Concurso EL EDICTO:',
+        'Adivina la Palabra',
+        'elpecado.ar/edicto'
     ]
 
     padding_top = 10
