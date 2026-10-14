@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#009EE3</color> <!-- Azul Mercado Pago -->
+    <color name="primary_dark">#007EB5</color>
+    <color name="accent">#00A650</color> <!-- Verde éxito Mercado Pago -->
+    <color name="error">#F04438</color>
+    <color name="warning">#F79009</color>
+    
+    <color name="background">#0F172A</color>
+    <color name="surface">#1E293B</color>
+    <color name="surface_variant">#334155</color>
+    
+    <color name="text_primary">#F8FAFC</color>
+    <color name="text_secondary">#94A3B8</color>
+    <color name="text_hint">#64748B</color>
+    
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="transparent">#00000000</color>
+</resources>

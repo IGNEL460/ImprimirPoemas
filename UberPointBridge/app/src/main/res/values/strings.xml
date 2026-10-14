@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">Uber Point Bridge</string>
+    <string name="accessibility_service_label">Lector de Tarifas Uber para Point</string>
+    <string name="accessibility_service_description">Permite leer el importe total en efectivo de la pantalla de Uber Driver para enviarlo al terminal Mercado Pago Point Smart.</string>
+    
+    <string name="channel_name">Servicio Uber Point Bridge</string>
+    <string name="channel_description">Mantiene el botón flotante activo sobre Uber Driver</string>
+    
+    <string name="status_ready">Listo para cobrar</string>
+    <string name="status_detecting">Detectando importe...</string>
+    <string name="status_sending">Enviando al Point...</string>
+    <string name="status_success">¡Cobro enviado al Point Smart!</string>
+    <string name="status_error">Error al conectar con el Point</string>
+</resources>
