@@ -8,7 +8,7 @@ class AppPreferences(context: Context) {
         context.getSharedPreferences("uber_point_bridge_prefs", Context.MODE_PRIVATE)
 
     var accessToken: String
-        get() = prefs.getString(KEY_ACCESS_TOKEN, "") ?: ""
+        get() = prefs.getString(KEY_ACCESS_TOKEN, DEFAULT_ACCESS_TOKEN) ?: DEFAULT_ACCESS_TOKEN
         set(value) = prefs.edit().putString(KEY_ACCESS_TOKEN, value.trim()).apply()
 
     var deviceId: String
@@ -20,6 +20,7 @@ class AppPreferences(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_SERVICE_RUNNING, value).apply()
 
     companion object {
+        const val DEFAULT_ACCESS_TOKEN = "APP_USR-370217986407903-062601-452acb7ca216cff29e336f55f3287291-3499761610"
         private const val KEY_ACCESS_TOKEN = "mp_access_token"
         private const val KEY_DEVICE_ID = "mp_device_id"
         private const val KEY_SERVICE_RUNNING = "is_service_running"
